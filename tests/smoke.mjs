@@ -1,0 +1,20 @@
+import { JSDOM } from 'jsdom';
+const dom = new JSDOM('<!doctype html><header><div id="who"></div></header><main id="app"></main><nav id="nav"></nav><div id="toast"></div>', { url: 'https://perks.samuhia.co.ke' });
+globalThis.window = globalThis;
+globalThis.document = dom.window.document;
+globalThis.localStorage = dom.window.localStorage;
+await import('../js/app.js');
+const w = globalThis;
+const tabs = ['over','sale','cust','txn','redeem','refs','vouch','camp','sms','tpl','rep','set','more'];
+w.S.user = { role: 'op' };
+for (const t of tabs) { w.go(t); if (!document.querySelector('#app').innerHTML) throw new Error('empty tab ' + t); }
+w.S.user = { role: 'cust', id: 'c1' }; w.render();
+w.S.user = { role: 'op' }; w.go('sale');
+const before = w.bal(w.S, 'c1');
+w.D.phone = '0712345678'; w.D.items = [{ name: 'Printing', price: '100' }, { name: 'USB cables', price: '200' }];
+w.rec2();
+await new Promise((r) => setTimeout(r, 700));
+const gained = w.bal(w.S, 'c1') - before;
+if (gained !== 15) throw new Error('expected 15 points (7+8), got ' + gained);
+console.log('smoke OK, points gained', gained);
+process.exit(0);

@@ -1,0 +1,704 @@
+diff --git a/.gitignore b/.gitignore
+index 3b1e1ee..1233743 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,4 +1,5 @@
+ node_modules/
++package-lock.json
+ .DS_Store
+ Thumbs.db
+ .env
+diff --git a/README.md b/README.md
+index 947130c..2b8fc5f 100644
+--- a/README.md
++++ b/README.md
+@@ -1,16 +1,24 @@
+-# Perks
++# Samuhia Perks
+ 
+-Web app built with plain HTML, CSS and JavaScript (ES modules). No build step.
++Loyalty, rewards, referrals and promotional SMS for Samuhia Cyber. Plain HTML, CSS and ES modules, no build step.
++
++Status: full interactive DEMO (simulated auth, data and SMS). Live wiring comes next, inside the shared DESK/PAY Firebase project and backend.
+ 
+ ## Structure
+ - `index.html` - entry point
+-- `css/styles.css` - global styles (CSS variables at top)
+-- `js/app.js` - entry script
++- `css/styles.css` - design tokens and responsive layout (bottom nav on phones, sidebar and tables from 900px)
++- `js/app.js` - entry; imports every module, then bootstraps
++- `js/core/` - constants, utilities, UI state
++- `js/modules/` - one file per domain: data (seed), points, transactions, customers, redemptions, referrals, vouchers, campaigns, sms (+templates), reports, settings, auth, customer-app
++- `js/app/` - shell (router, nav, confirm dialog) and bootstrap
++- `js/firebase/` - public web config and lazy live client (`DEMO_MODE` flag)
++- `tests/smoke.mjs` - renders every screen and records a sale (`npm i && npm test`)
+ 
+ ## Run locally
+-cat > .gitignore << 'EOF'
+-node_modules/
+-.DS_Store
+-Thumbs.db
+-.env
+-.vscode/
++`npx serve .` (or any static server). Demo operator login: `admin@samuhia.demo` / `Samuhia@2026!`. Demo customer OTP: `123456`.
++
++## Demo to live
++- All business rules (7 and 4 points per KES 100, 100 points = KES 20, referral above KES 50, consent-gated adverts) live in `modules/points`, `transactions`, `redemptions`, `referrals` and `sms`.
++- Live writes must move to the shared backend (Cloud Run + Admin SDK): sales, ledger, redemptions, referral rewards, SMS via the existing provider credentials in Secret Manager. Frontend never writes financial data.
++- Auth: Firebase Auth for operator roles, Phone Auth for customers. Add App Check and Firestore Rules before setting `DEMO_MODE = false`.
++- The reward draw stays DEMO-only until Kenyan legal and regulatory review.
+diff --git a/css/styles.css b/css/styles.css
+index de055a1..c633179 100644
+--- a/css/styles.css
++++ b/css/styles.css
+@@ -1,24 +1,25 @@
+-:root {
+-  --color-bg: #ffffff;
+-  --color-text: #111827;
+-  --color-primary: #2563eb;
+-  --radius: 8px;
+-  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+-}
+-
+-* { box-sizing: border-box; margin: 0; padding: 0; }
+-
+-body {
+-  font-family: var(--font);
+-  background: var(--color-bg);
+-  color: var(--color-text);
+-  line-height: 1.5;
+-}
+-
+-.site-header {
+-  padding: 1rem;
+-  background: var(--color-primary);
+-  color: #fff;
+-}
+-
+-#app { padding: 1rem; max-width: 960px; margin: 0 auto; }
++:root{--bg:#f4f8f6;--card:#fff;--tx:#0f2230;--mu:#5d7080;--ac:#0e9f6e;--ac2:#d9f5ea;--am:#b45309;--rd:#c62828;--bd:#dde7e2;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px)}
++@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0b1620;--card:#13232f;--tx:#e8f1ef;--mu:#93a8b5;--ac:#2cc58f;--ac2:#12382d;--am:#f5b14c;--rd:#ff7b72;--bd:#24394a}}
++*{box-sizing:border-box}html{height:100%}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding-bottom:calc(76px + env(safe-area-inset-bottom,0px));min-height:100%}
++header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:5}
++.logo{font-weight:800;font-size:19px}.logo b{color:var(--ac)}.demo{font-size:11px;background:var(--am);color:#fff;border-radius:99px;padding:2px 8px;margin-left:6px}
++main{max-width:760px;margin:0 auto;padding:14px}
++.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
++h2{margin:4px 0 12px;font-size:20px}h3{margin:0 0 8px;font-size:15px;color:var(--mu)}
++input,select,textarea{width:100%;font:inherit;padding:14px;border:1px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx);margin:4px 0 10px;min-height:48px}
++label{font-size:13px;color:var(--mu)}
++button{font:inherit;min-height:48px;padding:0 16px;border:0;border-radius:10px;background:var(--ac);color:#fff;font-weight:700;cursor:pointer}
++button.s{background:var(--ac2);color:var(--ac)}button.d{background:var(--rd)}button:disabled{opacity:.5}
++.big{width:100%;min-height:60px;font-size:18px}.row{display:flex;gap:8px;align-items:center}.row>*{flex:1}.row>.n{flex:none}
++.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stat{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px}.stat b{display:block;font-size:22px}.stat span{font-size:12px;color:var(--mu)}
++nav{position:fixed;bottom:0;left:0;right:0;display:flex;align-items:flex-end;background:var(--card);border-top:1px solid var(--bd);padding-bottom:env(safe-area-inset-bottom,0px);z-index:6}
++nav a{flex:1;order:var(--o);text-align:center;padding:8px 2px;font-size:11px;color:var(--mu);cursor:pointer;min-height:56px}nav a i{display:block;font-style:normal;font-size:20px;line-height:24px}nav a.on{color:var(--ac);font-weight:700}nav a.sale{color:#fff;background:var(--ac);border-radius:18px;margin:-16px 6px 6px;box-shadow:0 4px 14px rgba(14,159,110,.5);font-weight:700}.dk{display:none}
++.tb{display:none;width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow:hidden;font-size:14px;margin-bottom:12px}.tb th{text-align:left;padding:10px 12px;background:var(--ac2);color:var(--ac);font-size:12px;text-transform:uppercase}.tb td{padding:10px 12px;border-top:1px solid var(--bd);vertical-align:top}.tb tr.cr{cursor:pointer}.tb tr.cr:hover{background:var(--ac2)}.split.sel>div:first-child{display:none}.cg{display:grid;gap:12px}.bar{display:block}
++.disc{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px}.dc{display:flex;flex-direction:column;gap:6px;color:#fff;text-decoration:none;border-radius:18px;padding:20px;min-height:170px;box-shadow:0 8px 24px rgba(0,0,0,.18);transition:transform .2s}.dc:hover{transform:translateY(-3px)}.dc i{font-size:34px;font-style:normal}.dc b{font-size:19px}.dc span{opacity:.92;font-size:14px;flex:1}.dc em{font-style:normal;font-weight:700}.big1{grid-column:1/-1;min-height:190px}
++@media(min-width:900px){body.op{padding:0 0 0 232px}nav{top:0;bottom:auto;right:auto;width:232px;flex-direction:column;align-items:stretch;gap:2px;border-top:0;border-right:1px solid var(--bd);padding:64px 10px 10px}nav a{flex:none;order:0;display:flex;gap:10px;align-items:center;text-align:left;font-size:15px;padding:11px 14px;border-radius:10px;min-height:0}nav a i{font-size:18px;width:22px}nav a.on{background:var(--ac2)}nav a.sale{margin:0 0 8px;justify-content:center;box-shadow:none}.dk{display:flex!important}.mo{display:none!important}main{max-width:1360px;padding:24px}.tb{display:table}.mv{display:none!important}.split{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(340px,1fr);gap:16px;align-items:start}.split.rv{grid-template-columns:minmax(300px,1fr) minmax(0,2.2fr)}.split>div:first-child{display:block!important}.bar{display:flex;gap:10px}.bar>*{flex:1}.bar>button{flex:none}.cg{grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}#app.tpl{max-width:1200px}#app.rep .grid{grid-template-columns:repeat(5,1fr)}#app.sale{display:grid;grid-template-columns:1.3fr 1fr;gap:0 16px;max-width:1100px;align-items:start}#app.sale>h2{grid-column:1/-1}#app.sale>.card{grid-column:1}#app.sale>.card#rv{grid-column:2;grid-row:2/5;position:sticky;top:76px}#app.sale>button{grid-column:2;grid-row:5}.grid{grid-template-columns:repeat(3,1fr)}.two{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}.big1{grid-column:span 2}}
++.ok{background:var(--ac2);color:var(--ac);border-radius:10px;padding:10px;margin:8px 0}.warn{color:var(--am)}.err{color:var(--rd);font-size:14px}
++.li{display:flex;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:1px solid var(--bd);font-size:14px}.li:last-child{border:0}.mu{color:var(--mu);font-size:13px}
++.pill{font-size:11px;border-radius:99px;padding:2px 8px;background:var(--ac2);color:var(--ac)}.pill.f{background:#fde7e7;color:var(--rd)}
++.pts{background:linear-gradient(135deg,#0e9f6e,#0b6e7a);color:#fff;border-radius:16px;padding:20px}.pts b{font-size:42px;display:block}
++.bars{display:flex;gap:6px;align-items:flex-end;height:80px}.bars div{flex:1;background:var(--ac);border-radius:4px 4px 0 0;min-height:2px}
++#toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:10px 16px;border-radius:10px;z-index:20;display:none}
+diff --git a/index.html b/index.html
+index c0c45c5..1d74ca8 100644
+--- a/index.html
++++ b/index.html
+@@ -1,20 +1,15 @@
+ <!DOCTYPE html>
+ <html lang="en">
+ <head>
+-  <meta charset="UTF-8" />
+-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+-  <title>Perks</title>
+-  <link rel="stylesheet" href="css/styles.css" />
++<meta charset="utf-8">
++<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
++<meta name="color-scheme" content="light dark">
++<title>Samuhia Perks</title>
++<link rel="stylesheet" href="css/styles.css">
+ </head>
+ <body>
+-  <header class="site-header">
+-    <h1>Perks</h1>
+-  </header>
+-
+-  <main id="app">
+-    <p>Loading...</p>
+-  </main>
+-
+-  <script type="module" src="js/app.js"></script>
++<header><div class="logo">★ Samuhia <b>Perks</b><span class="demo">DEMO</span></div><div id="who"></div></header>
++<main id="app"></main><nav id="nav"></nav><div id="toast"></div>
++<script type="module" src="js/app.js"></script>
+ </body>
+ </html>
+diff --git a/js/app.js b/js/app.js
+index 2d339ba..14276c0 100644
+--- a/js/app.js
++++ b/js/app.js
+@@ -1,7 +1,22 @@
+-const app = document.getElementById("app");
++// Entry point. Order matters: constants, utils and state first, bootstrap (initial render) last.
++import './core/constants.js';
++import './core/utils.js';
++import './core/state.js';
++import './modules/data.js';
++import './modules/points.js';
++import './modules/sms.js';
++import './modules/transactions.js';
++import './modules/customers.js';
++import './modules/redemptions.js';
++import './modules/referrals.js';
++import './modules/vouchers.js';
++import './modules/campaigns.js';
++import './modules/reports.js';
++import './modules/settings.js';
++import './modules/auth.js';
++import './modules/customer-app.js';
++import './app/shell.js';
++import './app/bootstrap.js';
++import { DEMO_MODE } from './firebase/config.js';
+ 
+-function init() {
+-  app.innerHTML = "<p>Perks is running.</p>";
+-}
+-
+-document.addEventListener("DOMContentLoaded", init);
++if (!DEMO_MODE) import('./firebase/client.js').then((m) => m.initLive());
+diff --git a/js/app/bootstrap.js b/js/app/bootstrap.js
+new file mode 100644
+index 0000000..5a62a80
+--- /dev/null
++++ b/js/app/bootstrap.js
+@@ -0,0 +1,7 @@
++// app/bootstrap
++// Demo-era module: shared state and helpers live on window so inline handlers keep working.
++// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
++
++window.S=(()=>{try{const s=localStorage.getItem(K);if(s)return JSON.parse(s)}catch(e){}return seed()})();
++
++render();
+diff --git a/js/app/shell.js b/js/app/shell.js
+new file mode 100644
+index 0000000..401cc5f
+--- /dev/null
++++ b/js/app/shell.js
+@@ -0,0 +1,18 @@
++// app/shell
++// Demo-era module: shared state and helpers live on window so inline handlers keep working.
++// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
++
++Object.assign(window,{go,render,moreUI,ask});
++
++function go(t){tab=t;done=null;render()}
++
++function render(){ensure();document.body.classList.toggle('op',!!(S.user&&S.user.role=='op'));const u=S.user;$('#who').innerHTML=u?`<button class="s" onclick="S.user=null;save();render()">Log out</button>`:'';
++ if(!u){$('#nav').innerHTML='';$('#app').innerHTML=loginUI2();return}
++ if(u.role=='cust'){$('#nav').innerHTML='';$('#app').innerHTML=custUI2();return}
++ const T=[['over','Overview','⌂',1],['sale','New Sale','＋',3],['cust','Customers','☺',2],['txn','Transactions','☰'],['redeem','Redemptions','⇄',4],['refs','Referrals','⚭'],['vouch','Vouchers','🎟'],['camp','Campaigns','📣'],['sms','SMS Centre','✉'],['tpl','Templates','✎'],['rep','Reports','▤'],['set','Settings','⚙'],['more','More','⋯',5]];
++ $('#nav').innerHTML=T.map(t=>`<a class="${t[0]==tab?'on ':''}${t[0]=='sale'?'sale ':''}${t[3]?'':'dk '}${t[0]=='more'?'mo':''}" style="--o:${t[3]||9}" onclick="go('${t[0]}')"><i>${t[2]}</i>${t[1]}</a>`).join('');
++ $('#app').innerHTML=({over:overUI2,sale:saleUI,cust:custList2,redeem:redeem3,camp:campUI2,sms:sms3,set:set3,txn:txUI2,refs:refUI,vouch:vouchUI2,tpl:tplUI2,rep:repUI2,more:moreUI})[tab]();$('#app').className=u.role=='op'?tab:'';if(tab=='tpl'){tp();cc()}}
++
++function moreUI(){return`<h2>More</h2><div class="grid">${[['txn','Transactions'],['refs','Referrals'],['vouch','Vouchers'],['camp','Campaigns'],['sms','SMS Centre'],['tpl','Templates'],['rep','Reports'],['set','Settings']].map(t=>`<button class="s" style="min-height:72px" onclick="go('${t[0]}')">${t[1]}</button>`).join('')}</div>`}
++
++function ask(msg,fn,inp){const o=document.createElement('div');o.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:30;display:flex;align-items:center;justify-content:center;padding:16px';o.innerHTML=`<div class="card" style="max-width:380px;width:100%;margin:0"><p><b>${msg}</b></p>${inp?'<input id="mi">':''}<div class="row"><button class="s" id="mn">Cancel</button><button id="my">Confirm</button></div></div>`;document.body.appendChild(o);const x=()=>o.remove();o.querySelector('#mn').onclick=()=>{view.dc=0;x()};o.querySelector('#my').onclick=()=>{const v=inp?o.querySelector('#mi').value:null;x();fn(v)};if(inp)o.querySelector('#mi').focus()}
+diff --git a/js/core/constants.js b/js/core/constants.js
+new file mode 100644
+index 0000000..b081d2d
+--- /dev/null
++++ b/js/core/constants.js
+@@ -0,0 +1,11 @@
++// core/constants
++// Demo-era module: shared state and helpers live on window so inline handlers keep working.
++// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
++
++window.RATE={SERVICE:7,PRODUCT:4};
++
++window.CAT={SERVICE:['eCitizen assistance','KRA services','SHA services','NSSF services','Printing','Photocopying','Scanning','Passport photos','Phone flashing','Phone software repair','Virus/security troubleshooting','Google account assistance','Other service'],PRODUCT:['Chargers','Earphones','USB cables','Phone accessories','Bulbs','Other product']};
++
++window.TPL={sale:'Samuhia Cyber: Sale KES {amount} received. You earned {pts} pts. Balance: {bal} pts (KES {val}).',redeem:'Samuhia Cyber: You redeemed {pts} pts for KES {val} off. Balance: {bal} pts.',ref:'Samuhia Perks: Referral reward! You received {pts} pts. Balance: {bal} pts.'};
++
++window.DISC=[['Samuhia Perks','Earn points on every visit and invite friends for bonus rewards.','https://perks.samuhia.co.ke','#0e9f6e,#0b6e7a','★'],['Lipa Mdogo Mdogo','Pay rent in small, manageable instalments.','https://samuhia.co.ke','#7c3aed,#4338ca','🏠'],['Samuhia Desk','Discover an extra income opportunity.','https://samuhia.co.ke','#f59e0b,#ea580c','💼'],['MyChama','Run your chama with clarity and trust.','https://samuhia.co.ke','#0ea5e9,#2563eb','🤝'],['MyRegister','Keep your records simple and organised.','https://samuhia.co.ke','#ec4899,#be123c','📒']];
+diff --git a/js/core/state.js b/js/core/state.js
+new file mode 100644
+index 0000000..bef6741
+--- /dev/null
++++ b/js/core/state.js
+@@ -0,0 +1,13 @@
++// core/state
++// Demo-era module: shared state and helpers live on window so inline handlers keep working.
++// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
++
++window.tab='sale';
++
++window.D={phone:'',items:[{name:'Printing',price:''}],ne:'',ref:''};
++
++window.done=null;
++
++window.lock=false;
++
++window.view={};
+diff --git a/js/core/utils.js b/js/core/utils.js
+new file mode 100644
+index 0000000..aaae659
+--- /dev/null
++++ b/js/core/utils.js
+@@ -0,0 +1,27 @@
++// core/utils
++// Demo-era module: shared state and helpers live on window so inline handlers keep working.
++// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
++
++Object.assign(window,{norm,toast});
++
++window.K='sperks_v1';
++
++window.$=s=>document.querySelector(s);
++
++window.money=n=>'KES '+Number(n).toLocaleString('en-KE');
++
++window.now=()=>new Date().toISOString();
++
++function norm(p){p=String(p).replace(/[\s-]/g,'');if(/^\+254[17]\d{8}$/.test(p))return p;if(/^254[17]\d{8}$/.test(p))return'+'+p;if(/^0[17]\d{8}$/.test(p))return'+254'+p.slice(1);return null}
++
++window.save=()=>{try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}};
++
++function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',2400)}
++
++window.bd=s=>`<span class="pill ${/FAIL|VOID|REVERS|REJECT/.test(s)?'f':''}">${s}</span>`;
++
++window.nmc=id=>(S.cs.find(c=>c.id==id)||{}).phone;
++
++window.dt=s=>new Date(s).toLocaleString('en-KE',{timeZone:'Africa/Nairobi',dateStyle:'short',timeStyle:'short'});
++
++window.fx=s=>(s||'').replace(/^0/,'+254');
+diff --git a/js/firebase/client.js b/js/firebase/client.js
+new file mode 100644
+index 0000000..ab10362
+--- /dev/null
++++ b/js/firebase/client.js
+@@ -0,0 +1,15 @@
++// Live-mode Firebase client, loaded only when DEMO_MODE is false. No build step: SDK comes from the CDN.
++import { firebaseConfig } from './config.js';
++
++const V = '10.14.1';
++let app;
++
++export async function initLive() {
++  const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
++  app = initializeApp(firebaseConfig);
++  const { getAnalytics, isSupported } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-analytics.js`);
++  if (await isSupported()) getAnalytics(app);
++  return app;
++}
++
++export const getApp = () => app;
+diff --git a/js/firebase/config.js b/js/firebase/config.js
+new file mode 100644
+index 0000000..6ad2948
+--- /dev/null
++++ b/js/firebase/config.js
+@@ -0,0 +1,14 @@
++// Public Firebase web config (identifiers, not secrets). Restrict the API key by HTTP referrer
++// and enforce App Check and Firestore Rules before turning DEMO_MODE off.
++export const DEMO_MODE = true;
++
++export const firebaseConfig = {
++  apiKey: 'AIzaSyDuEPDV2wpBtgfSW6L4v05PVUxeaFkW3k0',
++  authDomain: 'plot-9fd6e.firebaseapp.com',
++  databaseURL: 'https://plot-9fd6e-default-rtdb.firebaseio.com',
++  projectId: 'plot-9fd6e',
++  storageBucket: 'plot-9fd6e.firebasestorage.app',
++  messagingSenderId: '1037620305589',
++  appId: '1:1037620305589:web:c88db39dd1a456fcb068fc',
++  measurementId: 'G-QW47XWGCNS',
++};
+diff --git a/js/modules/auth.js b/js/modules/auth.js
+new file mode 100644
+index 0000000..507dc5d
+--- /dev/null
++++ b/js/modules/auth.js
+@@ -0,0 +1,14 @@
++// modules/auth
++// Demo-era module: shared state and helpers live on window so inline handlers keep working.
++// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
++
++Object.assign(window,{loginUI,opLogin,custLogin,loginUI2});
++
++function loginUI(){return`<div class="card"><h2>Operator login</h2><label>Username</label><input id="u" value="admin@samuhia.demo"><label>Password</label><input id="p" type="password" value="Samuhia@2026!"><button class="big" onclick="opLogin()">Sign in</button><p class="mu">Demo environment. These credentials are for the demo only.</p></div>
++<div class="card"><h2>Customer demo (simulated OTP)</h2>${S.cs.slice(0,4).map(c=>`<button class="s" style="width:100%;margin-bottom:8px" onclick="custLogin('${c.id}')">${c.phone} — send demo OTP</button>`).join('')}<p class="mu">Real access will use Firebase Phone Authentication. Demo OTP: 123456, auto-filled.</p></div>`}
++
++function opLogin(){if($('#u').value=='admin@samuhia.demo'&&$('#p').value=='Samuhia@2026!'){S.user={role:'op'};save();render()}else toast('Invalid credentials')}
++
++function custLogin(id){const c=S.cs.find(x=>x.id==id);S.sms.push({id:'m'+S.sms.length,phone:c.phone,type:'otp',camp:null,msg:'Samuhia Perks code: 123456. Do not share it.',st:'SENT',cost:S.cfg.sms,at:now()});view.otp=id;save();render()}
++
++function loginUI2(){if(!view.otp)return loginUI()+`<div class="card"><h3>Or enter your phone</h3><input id="cp" inputmode="tel" placeholder="07XX XXX XXX"><button class="s big" onclick="const c=S.cs.find(x=>x.phone==norm($('#cp').value));c?custLogin(c.id):toast('Number not registered')">Send OTP</button></div>`;const c=S.cs.find(x=>x.id==view.otp);return`<div class="card"><h2>Verify ${c.phone}</h2><div class="ok">DEMO ONLY: your code is 123456. No SMS is sent. Production uses Firebase Phone Authentication.</div><input id="ot" inputmode="numeric" value="123456"><button class="big" onclick="if($('#ot').value=='123456'){S.user={role:'cust',id:'${c.id}'};view.otp=null;save();render()}else toast('Wrong code')">Verify</button><button class="s big" style="margin-top:8px" onclick="view.otp=null;render()">Back</button></div>`}
+diff --git a/js/modules/campaigns.js b/js/modules/campaigns.js
+new file mode 100644
+index 0000000..37f4849
+--- /dev/null
++++ b/js/modules/campaigns.js
+@@ -0,0 +1,20 @@
++// modules/campaigns
++// Demo-era module: shared state and helpers live on window so inline handlers keep working.
++// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
++
++Object.assign(window,{campUI,editCamp,newCamp,pv,campUI2,tgC,saveCamp});
++
++function campUI(){return`<h2>Campaigns</h2><p class="mu">The active campaign is added to SMS only for customers who opted in to marketing.</p>${S.camps.map(k=>`<div class="card"><div class="li"><b>${k.name}</b>${S.act==k.id?'<span class="pill">ACTIVE</span>':''}</div><p class="mu">${k.ad} https://perks.samuhia.co.ke</p><button class="${S.act==k.id?'s':''}" onclick="S.act='${k.id}';save();render()">${S.act==k.id?'Selected':'Make active'}</button> <button class="s" onclick="editCamp('${k.id}')">Edit ad</button></div>`).join('')}<button class="s big" onclick="newCamp()">+ New campaign</button>`}
++
++function editCamp(id){const k=S.camps.find(x=>x.id==id),a=prompt('Advertisement text',k.ad);if(a){k.ad=a;save();render()}}
++
++function newCamp(){const n=prompt('Campaign name');if(!n)return;const a=prompt('Advertisement text');if(!a)return;S.camps.push({id:'k'+(S.camps.length+1),name:n,ad:a,on:true});save();render()}
++
++function pv(k){return S.tpl.sale.replace(/{(\w+)}/g,(m,x)=>({amount:600,pts:36,bal:255,val:51})[x]??m)+' '+k.ad+' '+(k.url||'https://perks.samuhia.co.ke')+' Reply STOP to opt out.'}
++
++function campUI2(){const e=S.camps.find(k=>k.id==view.ek)||{},fi=(id,l,v,t)=>`<div><label>${l}</label><input id="${id}" type="${t||'text'}" value="${(v||'').toString().replace(/"/g,'&quot;')}"></div>`;
++return`<h2>Campaigns</h2><div class="split rv"><div class="card"><h3>${e.id?'Edit':'New'} campaign</h3>${fi('cn','Name',e.name)}<label>Advertisement</label><textarea id="ca" rows="3">${e.ad||''}</textarea>${fi('cu','Destination link',e.url||'https://perks.samuhia.co.ke')}${fi('cm','Product or service promoted',e.promo)}<div class="row">${fi('cs','Start',e.start,'date')}${fi('ce','End',e.end,'date')}</div>${fi('cp','Priority',e.pr||1,'number')}<button class="big" onclick="saveCamp()">Save campaign</button>${e.id?'<button class="s big" style="margin-top:8px" onclick="view.ek=null;render()">Cancel edit</button>':''}</div><div class="cg">${S.camps.slice().sort((a,b)=>(b.pr||0)-(a.pr||0)).map(k=>`<div class="card"><div class="li"><b>${k.name}</b>${S.act==k.id?'<span class="pill">ACTIVE</span>':k.on?'<span class="pill">READY</span>':bd('PAUSED')}</div><p class="mu">${k.ad}<br>${k.url||'https://perks.samuhia.co.ke'}<br>Priority ${k.pr||1}${k.start?' · from '+k.start:''}${k.end?' · to '+k.end:''}${k.promo?' · promotes '+k.promo:''}</p><p style="font-size:13px"><b>SMS preview:</b> ${pv(k)}</p><div class="row">${k.on?`<button onclick="S.act='${k.id}';save();render()">${S.act==k.id?'Selected':'Make active'}</button>`:''}<button class="s" onclick="tgC('${k.id}')">${k.on?'Pause':'Resume'}</button><button class="s" onclick="view.ek='${k.id}';render();scrollTo(0,0)">Edit</button></div></div>`).join('')}</div></div>`}
++
++function tgC(id){const k=S.camps.find(x=>x.id==id);k.on=!k.on;if(!k.on&&S.act==id)S.act='';save();render()}
++
++function saveCamp(){const g=i=>$('#'+i).value.trim();if(!g('cn')||!g('ca'))return toast('Name and advertisement required');let k=S.camps.find(x=>x.id==view.ek);if(!k){k={id:'k'+Date.now(),on:true};S.camps.push(k)}Object.assign(k,{name:g('cn'),ad:g('ca'),url:g('cu'),promo:g('cm'),start:g('cs'),end:g('ce'),pr:+g('cp')||1});view.ek=null;save();toast('Campaign saved');render()}
+diff --git a/js/modules/customer-app.js b/js/modules/customer-app.js
+new file mode 100644
+index 0000000..83e8654
+--- /dev/null
++++ b/js/modules/customer-app.js
+@@ -0,0 +1,19 @@
++// modules/customer-app
++// Demo-era module: shared state and helpers live on window so inline handlers keep working.
++// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
++
++Object.assign(window,{custUI,custUI2});
++
++function custUI(){const c=S.cs.find(x=>x.id==S.user.id),b=bal(S,c.id),link='https://perks.samuhia.co.ke/join?ref='+c.code,rs=S.refs.filter(r=>r.from==c.id);
++ return`<div class="pts"><span>Your loyalty rewards</span><b>${b} points</b>KES ${b/5} value</div>
++<div class="card" style="margin-top:12px"><h3>Refer a friend</h3><p><b>${c.code}</b><br><span class="mu">${link}</span></p><button onclick="navigator.clipboard&&navigator.clipboard.writeText('${link}').then(()=>toast('Link copied'),()=>toast('Copy failed'))">Copy link</button><p class="mu">When someone you invite spends above KES 50, you get 50 points and they get 30. ${rs.filter(r=>r.st=='REWARDED').length} rewarded · ${rs.filter(r=>r.st=='PENDING').length} pending.</p></div>
++<div class="card"><h3>Points history</h3>${S.led.filter(l=>l.c==c.id).slice(-10).reverse().map(l=>`<div class="li"><span>${l.desc}</span><span>${l.pts>0?'+':''}${l.pts}</span></div>`).join('')}<p class="mu">To redeem points, visit Samuhia Cyber. Our operator will apply your rewards.</p></div>
++<div class="card"><h3>Promotions</h3><button class="s" onclick="c_=S.cs.find(x=>x.id=='${c.id}');c_.mkt=!c_.mkt;save();render()">Marketing: ${c.mkt?'On (tap to opt out)':'Off (tap to opt in)'}</button></div>`}
++
++function custUI2(){const c=S.cs.find(x=>x.id==S.user.id),b=bal(S,c.id),link='https://perks.samuhia.co.ke/join?ref='+c.code,rs=S.refs.filter(r=>r.from==c.id),mine=S.tx.filter(t=>t.c==c.id),earned=S.led.filter(l=>l.c==c.id&&l.pts>0).reduce((a,l)=>a+l.pts,0),red=-S.led.filter(l=>l.c==c.id&&l.type=='REDEEM').reduce((a,l)=>a+l.pts,0);
++return`<div class="pts"><span>Your loyalty rewards · ${c.phone}</span><b>${b} points</b>KES ${b/5} value<div class="row" style="margin-top:10px;font-size:13px"><span>Spent ${money(mine.filter(t=>t.status=='COMPLETED').reduce((a,t)=>a+t.elig,0))}</span><span>Earned ${earned}</span><span>Redeemed ${red}</span><span>Referrals ${rs.filter(r=>r.st=='REWARDED').length}</span></div></div>
++<h2 style="margin-top:22px">Discover Samuhia</h2><div class="disc">${DISC.map((d,i)=>`<a class="dc${i?'':' big1'}" style="background:linear-gradient(135deg,${d[3].split(',')[0]},${d[3].split(',')[1]})" href="${d[2]}" target="_blank" rel="noopener"><i>${d[4]}</i><b>${d[0]}</b><span>${d[1]}</span><em>Learn more →</em></a>`).join('')}</div>
++<div class="two"><div><div class="card"><h3>Refer a friend</h3><p><b>${c.code}</b><br><span class="mu">${link}</span></p><div class="row"><button onclick="navigator.clipboard&&navigator.clipboard.writeText('${link}').then(()=>toast('Link copied'),()=>toast('Copy failed'))">Copy link</button><button class="s" onclick="navigator.share?navigator.share({title:'Samuhia Perks',url:'${link}'}).catch(()=>{}):toast('Sharing unavailable, copy the link')">Share</button></div><p class="mu">When someone you invite spends above KES 50, you get 50 points and they get 30. ${rs.filter(r=>r.st=='REWARDED').length} rewarded · ${rs.filter(r=>r.st=='PENDING').length} pending.</p></div>
++<div class="card"><h3>My vouchers</h3>${S.vo.filter(v=>v.c==c.id).map(v=>`<div class="li"><span>${v.code}<br><span class="mu">${v.type} ${v.val}</span></span>${bd(v.st)}</div>`).join('')||'<p class="mu">No vouchers yet.</p>'}<p class="mu">To redeem points, visit Samuhia Cyber. Our operator will apply your rewards.</p></div>
++<div class="card"><h3>Promotions</h3><button class="s" onclick="const x=S.cs.find(y=>y.id=='${c.id}');x.mkt=!x.mkt;S.audit.push({at:now(),a:'CONSENT '+x.phone+' '+x.mkt});save();render()">Marketing: ${c.mkt?'On (tap to opt out)':'Off (tap to opt in)'}</button></div></div>
++<div><div class="card"><h3>Transactions</h3>${mine.slice().reverse().map(t=>`<div class="li" style="cursor:pointer" onclick="view.ct=view.ct=='${t.id}'?null:'${t.id}';render()"><span>${t.items.map(i=>i.name+(view.ct==t.id?' ('+money(i.price)+', +'+i.pts+' pts)':'')).join(', ')}<br><span class="mu">${new Date(t.at).toLocaleDateString('en-KE')} · ${t.status}</span></span><span>${money(t.total)}<br><span class="pill">+${t.pts}</span></span></div>`).join('')}</div><div class="card"><h3>Points history</h3>${S.led.filter(l=>l.c==c.id).slice(-12).reverse().map(l=>`<div class="li"><span>${l.desc}<br><span class="mu">${l.type}</span></span><b>${l.pts>0?'+':''}${l.pts}</b></div>`).join('')}</div></div></div>`}
+diff --git a/js/modules/customers.js b/js/modules/customers.js
+new file mode 100644
+index 0000000..5e473c4
+--- /dev/null
++++ b/js/modules/customers.js
+@@ -0,0 +1,22 @@
++// modules/customers
++// Demo-era module: shared state and helpers live on window so inline handlers keep working.
++// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
++
++Object.assign(window,{custListUI,prof,custList2,addCust,addC2,c_t,prof2});
++
++function custListUI(){const q=view.q||'',list=S.cs.filter(c=>c.phone.includes(q.replace(/^0/,'+254')));
++ if(view.c){const c=S.cs.find(x=>x.id==view.c);return`<button class="s" onclick="view.c=null;render()">← Back</button>${prof(c)}`}
++ return`<h2>Customers</h2><input placeholder="Search phone" value="${q}" oninput="view.q=this.value;render();document.querySelector('input').focus()">${list.map(c=>`<div class="card" onclick="view.c='${c.id}';render()"><div class="li"><b>${c.phone}</b><b>${bal(S,c.id)} pts</b></div><span class="mu">${money(bal(S,c.id)/5)} · code ${c.code} · marketing ${c.mkt?'yes':'no'} · ${S.tx.filter(t=>t.c==c.id).length} sales</span></div>`).join('')||'<p class="mu">No customers found.</p>'}`}
++
++function prof(c){return`<h2>${c.phone}</h2><div class="pts"><b>${bal(S,c.id)} pts</b>${money(bal(S,c.id)/5)} value · code ${c.code}</div><div class="card" style="margin-top:12px"><h3>Points ledger</h3>${S.led.filter(l=>l.c==c.id).slice(-10).reverse().map(l=>`<div class="li"><span>${l.desc}<br><span class="mu">${l.type}</span></span><span>${l.pts>0?'+':''}${l.pts} → ${l.after}</span></div>`).join('')}</div>`}
++
++function custList2(){const q=view.q||'',C=S.cs.filter(c=>c.phone.includes(fx(q))),sp=c=>S.tx.filter(t=>t.c==c.id&&t.status=='COMPLETED').reduce((a,t)=>a+t.elig,0),n=c=>S.tx.filter(t=>t.c==c.id).length,sel=view.c?S.cs.find(x=>x.id==view.c):null;
++return`<h2>Customers</h2><div class="bar"><input placeholder="Search phone" value="${q}" onchange="view.q=this.value;render()"><button onclick="addCust()">+ Add customer</button></div><div class="split${sel?' sel':''}"><div><table class="tb"><thead><tr><th>Phone<th>Points<th>Value<th>Lifetime spend<th>Sales<th>Code<th>Registered<th>Marketing</tr></thead>${C.map(c=>`<tr class="cr" onclick="view.c='${c.id}';render()"><td><b>${c.phone}</b><td>${bal(S,c.id)}<td>${money(bal(S,c.id)/5)}<td>${money(sp(c))}<td>${n(c)}<td>${c.code}<td>${new Date(c.created).toLocaleDateString('en-KE')}<td>${c.mkt?'Yes':'No'}`).join('')}</table><div class="mv">${C.map(c=>`<div class="card" onclick="view.c='${c.id}';render()"><div class="li"><b>${c.phone}</b><b>${bal(S,c.id)} pts</b></div><span class="mu">${money(bal(S,c.id)/5)} · spend ${money(sp(c))} · ${n(c)} sales · ${c.code} · marketing ${c.mkt?'yes':'no'}</span></div>`).join('')}</div></div><div>${sel?`<button class="s mv" onclick="view.c=null;render()">← Back</button>`+prof2(sel):'<p class="mu">Select a customer to see their profile.</p>'}</div></div>`}
++
++function addCust(){ask('Customer phone',v=>addC2(v),1)}
++
++function addC2(v){const p=norm(v||'');if(!p)return toast('Invalid phone');if(S.cs.some(c=>c.phone==p))return toast('Already exists');const c={id:'c'+(S.cs.length+1),phone:p,code:Math.random().toString(36).slice(2,8).toUpperCase(),mkt:false,by:null,created:now()};S.cs.push(c);sendSms(S,c,'welcome',{code:c.code});view.c=c.id;save();render()}
++
++function c_t(id){const x=S.cs.find(y=>y.id==id);x.mkt=!x.mkt;S.audit.push({at:now(),a:'CONSENT '+x.phone+' '+x.mkt});save();render()}
++
++function prof2(c){const L2=(t,rows)=>`<div class="card"><h3>${t}</h3>${rows.join('')||'<span class="mu">None</span>'}</div>`;return`<div class="pts"><b>${bal(S,c.id)} pts</b>${money(bal(S,c.id)/5)} · ${c.phone} · code ${c.code}</div><div class="card" style="margin-top:12px"><div class="li"><span>Marketing consent</span><button class="s" onclick="c_t('${c.id}')">${c.mkt?'Opted in':'Opted out'}</button></div></div>${L2('Transactions',S.tx.filter(t=>t.c==c.id).slice(-6).reverse().map(t=>`<div class="li"><span>${t.id} ${t.items.map(i=>i.name).join(', ')}</span><span>${money(t.total)} ${bd(t.status)}</span></div>`))}${L2('Points ledger',S.led.filter(l=>l.c==c.id).slice(-8).reverse().map(l=>`<div class="li"><span>${l.desc}<br><span class="mu">${l.type}</span></span><span>${l.pts>0?'+':''}${l.pts} → ${l.after}</span></div>`))}${L2('Vouchers and referrals',[...S.vo.filter(v=>v.c==c.id).map(v=>`<div class="li"><span>${v.code}</span>${bd(v.st)}</div>`),...S.refs.filter(r=>r.from==c.id||r.to==c.id).map(r=>`<div class="li"><span>${nmc(r.from)} → ${nmc(r.to)}</span>${bd(r.st)}</div>`)])}${L2('SMS history',S.sms.filter(m=>m.phone==c.phone).slice(-5).reverse().map(m=>`<div class="li"><span>${m.msg.slice(0,80)}…</span>${bd(m.st)}</div>`))}`}
+diff --git a/js/modules/data.js b/js/modules/data.js
+new file mode 100644
+index 0000000..6745e25
+--- /dev/null
++++ b/js/modules/data.js
+@@ -0,0 +1,18 @@
++// modules/data
++// Demo-era module: shared state and helpers live on window so inline handlers keep working.
++// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
++
++Object.assign(window,{seed,ensure});
++
++function seed(){const d=n=>new Date(Date.now()-n*864e5).toISOString();
++ const cs=[['+254712345678','AMANI7',1],['+254723456789','WANJI4',1],['+254734567890','KIPRO2',0],['+254745678901','NEEMA9',1]].map((c,i)=>({id:'c'+(i+1),phone:c[0],code:c[1],mkt:!!c[2],by:null,created:d(6-i)}));
++ const S={cfg:{sv:7,pr:4,min:100,ref:50,inv:30,refMin:50,sms:0.2},cs,tx:[],led:[],sms:[],refs:[],act:'k5',user:null,n:1,
++ camps:[{id:'k1',name:'Lipa Mdogo Mdogo',ad:'Need help paying rent in instalments? Discover Lipa Mdogo Mdogo.',on:true},{id:'k2',name:'Samuhia Desk',ad:'Looking for extra income? Discover Samuhia Desk.',on:true},{id:'k3',name:'MyChama',ad:'Run your chama with MyChama.',on:true},{id:'k4',name:'MyRegister',ad:'Simplify records with MyRegister.',on:true},{id:'k5',name:'Samuhia Perks',ad:'Enjoy more rewards every time you shop at Samuhia Cyber.',on:true}]};
++ S.refs.push({id:'r1',from:'c1',to:'c2',amt:0,st:'PENDING'});
++ const seedTx=[[0,'Printing',150,5],[1,'USB cables',300,5],[0,'Phone flashing',500,4],[2,'KRA services',400,3],[3,'Passport photos',250,2],[1,'eCitizen assistance',350,2],[0,'Chargers',600,1],[3,'Scanning',100,0],[2,'Photocopying',80,0]];
++ seedTx.forEach(t=>post(S,S.cs[t[0]].phone,[{name:t[1],price:t[2]}],0,d(t[3]),true));return S}
++
++function ensure(){if(!S.vo)S.vo=[['DISC50','DISCOUNT',50,'AVAILABLE'],['DISC100','DISCOUNT',100,'AWARDED','c1'],['AIR20','AIRTIME',20,'AVAILABLE'],['AIR50','AIRTIME',50,'REDEEMED','c2'],['PTS25','POINTS',25,'AVAILABLE'],['PTS50','POINTS',50,'AVAILABLE'],['DISC30','DISCOUNT',30,'VOID'],['AIR10','AIRTIME',10,'AVAILABLE'],['PTS100','POINTS',100,'AVAILABLE'],['DISC20','DISCOUNT',20,'AVAILABLE']].map((v,i)=>({id:'v'+i,code:v[0],type:v[1],val:v[2],st:v[3],c:v[4]||null,at:now()}));
++if(!S.tpl)S.tpl={...TPL,voucher:'Samuhia Perks: You won voucher {code} worth {val}. Show it at Samuhia Cyber.',welcome:'Welcome to Samuhia Perks! Your referral code is {code}. Earn points on every visit.'};
++if(!S.audit)S.audit=[];if(S.draw==null)S.draw=false;if(S.refs.length<2)S.refs.push({id:'r2',from:'c4',to:'c3',amt:0,st:'PENDING'});
++if(!S.sms.some(m=>m.st=='FAILED')&&S.sms.length>3){S.sms[1].st='FAILED';S.sms[3].st='FAILED'}}
+diff --git a/js/modules/points.js b/js/modules/points.js
+new file mode 100644
+index 0000000..7b1103d
+--- /dev/null
++++ b/js/modules/points.js
+@@ -0,0 +1,13 @@
++// modules/points
++// Demo-era module: shared state and helpers live on window so inline handlers keep working.
++// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
++
++Object.assign(window,{itemType,calc,L});
++
++function itemType(n){return CAT.PRODUCT.includes(n)?'PRODUCT':'SERVICE'}
++
++function calc(S,items){return items.map(i=>{const t=itemType(i.name),r=t=='SERVICE'?S.cfg.sv:S.cfg.pr;return{...i,type:t,rate:r,pts:Math.floor(i.price*r/100)}})}
++
++window.bal=(S,id)=>S.led.filter(l=>l.c==id).reduce((a,l)=>a+l.pts,0);
++
++function L(S,c,type,pts,desc,at){S.led.push({id:'l'+S.led.length,c,type,pts,after:bal(S,c)+pts,desc,at:at||now()})}
+diff --git a/js/modules/redemptions.js b/js/modules/redemptions.js
+new file mode 100644
+index 0000000..fcd62e4
+--- /dev/null
++++ b/js/modules/redemptions.js
+@@ -0,0 +1,17 @@
++// modules/redemptions
++// Demo-era module: shared state and helpers live on window so inline handlers keep working.
++// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
++
++Object.assign(window,{redeemUI,rr,redeem,redeem2,redeem3});
++
++function redeemUI(){const ph=norm(view.rp||''),c=ph&&S.cs.find(x=>x.phone==ph),p=Math.floor(+view.pts||0);
++ return`<h2>Redeem points</h2><div class="card"><label>Customer phone</label><input inputmode="tel" value="${view.rp||''}" oninput="view.rp=this.value;rr()"><div id="rd"></div></div>`}
++
++function rr(){const ph=norm(view.rp||''),c=ph&&S.cs.find(x=>x.phone==ph);$('#rd').innerHTML=!c?(ph?'<span class="err">Customer not found</span>':''):`<div class="ok">${bal(S,c.id)} pts available</div><label>Points to redeem (min ${S.cfg.min})</label><input inputmode="numeric" oninput="view.pts=this.value;$('#rv2').textContent=money(Math.floor(+this.value||0)*20/100)"><p>Discount value: <b id="rv2">KES 0</b></p><button class="big" onclick="redeem('${c.id}')">Confirm redemption</button>`}
++
++function redeem(id){const p=Math.floor(+view.pts||0),c=S.cs.find(x=>x.id==id),b=bal(S,id);if(p<S.cfg.min)return toast('Minimum '+S.cfg.min+' points');if(p>b)return toast('Exceeds balance');
++ return ask('Redeem '+p+' points for '+money(p*20/100)+'?',()=>{L(S,id,'REDEEM',-p,'Redeemed in shop');sendSms(S,c,'redeem',{pts:p,val:p*20/100,bal:bal(S,id)});save();view.pts='';toast('Redeemed '+money(p*20/100));render()})}
++
++function redeem2(){return redeemUI()+`<div class="card"><h3>Recent redemptions</h3>${S.led.filter(l=>l.type=='REDEEM').slice(-8).reverse().map(l=>`<div class="li"><span>${nmc(l.c)}</span><b>${-l.pts} pts · ${money(-l.pts/5)}</b></div>`).join('')||'<p class="mu">None yet.</p>'}</div>`}
++
++function redeem3(){const H=S.led.filter(l=>l.type=='REDEEM').slice().reverse();return`<div class="two"><div>${redeemUI()}</div><div><h2>Redemption history</h2><table class="tb"><thead><tr><th>Customer<th>Points<th>Value<th>Balance after<th>Date</tr></thead>${H.map(l=>`<tr><td>${nmc(l.c)}<td>${-l.pts}<td>${money(-l.pts/5)}<td>${l.after}<td>${dt(l.at)}`).join('')}</table><div class="mv">${H.map(l=>`<div class="li"><span>${nmc(l.c)}</span><b>${-l.pts} pts · ${money(-l.pts/5)}</b></div>`).join('')||'<p class="mu">No redemptions yet.</p>'}</div></div></div>`}
+diff --git a/js/modules/referrals.js b/js/modules/referrals.js
+new file mode 100644
+index 0000000..61482f5
+--- /dev/null
++++ b/js/modules/referrals.js
+@@ -0,0 +1,11 @@
++// modules/referrals
++// Demo-era module: shared state and helpers live on window so inline handlers keep working.
++// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
++
++Object.assign(window,{refUI,regRef,runDraw});
++
++function refUI(){const R=S.refs,n=s=>R.filter(r=>r.st==s).length;return`<h2>Referrals</h2><div class="grid"><div class="stat"><b>${R.length}</b><span>Total</span></div><div class="stat"><b>${n('PENDING')}</b><span>Pending</span></div><div class="stat"><b>${n('REWARDED')}</b><span>Rewarded</span></div><div class="stat"><b>${n('REWARDED')*(S.cfg.ref+S.cfg.inv)}</b><span>Points issued</span></div></div><div class="two" style="margin-top:12px"><div class="card"><h3>Register referral</h3><input id="rg1" placeholder="Inviter referral code"><input id="rg2" inputmode="tel" placeholder="Invitee phone"><button class="big" onclick="regRef()">Register (pending)</button></div><div class="card"><h3>Reward draw: DEMO / SIMULATED</h3><p class="mu">Not connected to any real prize service. Production use stays disabled pending Kenyan legal and regulatory review.</p><button class="s" onclick="S.draw=!S.draw;save();render()">Draw: ${S.draw?'ON':'OFF'}</button> <button ${S.draw?'':'disabled'} onclick="runDraw()">Run simulated draw</button></div></div>${R.slice().reverse().map(r=>`<div class="card"><div class="li"><span>${nmc(r.from)} → ${nmc(r.to)}</span>${bd(r.st)}</div><span class="mu">${r.txId?'Qualifying '+r.txId+' ('+money(r.amt)+')':'Awaiting purchase above KES '+S.cfg.refMin}${r.draw?' · Draw: '+r.draw:''}</span></div>`).join('')}`}
++
++function regRef(){const f=S.cs.find(c=>c.code==$('#rg1').value.trim().toUpperCase()),p=norm($('#rg2').value);if(!f||!p)return toast('Check code and phone');if(f.phone==p)return toast('No self-referrals');let c=S.cs.find(x=>x.phone==p);if(c&&S.refs.some(r=>r.to==c.id))return toast('Customer already referred');if(!c){c={id:'c'+(S.cs.length+1),phone:p,code:Math.random().toString(36).slice(2,8).toUpperCase(),mkt:false,by:f.id,created:now()};S.cs.push(c)}c.by=f.id;S.refs.push({id:'r'+(S.refs.length+1),from:f.id,to:c.id,amt:0,st:'PENDING'});save();toast('Referral registered');render()}
++
++function runDraw(){const rs=S.refs.filter(r=>r.st=='REWARDED'&&!r.draw),vs=S.vo.filter(v=>v.st=='AVAILABLE');if(!rs.length||!vs.length)return toast('Needs a rewarded referral and an available voucher');if(!view.dc){view.dc=1;return ask('Run simulated draw (DEMO)?',()=>runDraw())}view.dc=0;const r=rs[Math.floor(Math.random()*rs.length)],v=vs[Math.floor(Math.random()*vs.length)];award(v,r.from);r.draw=v.code+' ('+v.type+' '+v.val+')';S.audit.push({at:now(),a:'DRAW '+r.id});save();toast('Winner '+nmc(r.from)+': '+v.code);render()}
+diff --git a/js/modules/reports.js b/js/modules/reports.js
+new file mode 100644
+index 0000000..992686d
+--- /dev/null
++++ b/js/modules/reports.js
+@@ -0,0 +1,21 @@
++// modules/reports
++// Demo-era module: shared state and helpers live on window so inline handlers keep working.
++// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
++
++Object.assign(window,{overUI,repUI,csv,overUI2,repUI2});
++
++function overUI(){const today=S.tx.filter(t=>t.status=='COMPLETED'&&t.at.slice(0,10)==now().slice(0,10)),sum=a=>a.reduce((x,t)=>x+t.total,0);
++ const liab=S.cs.reduce((a,c)=>a+bal(S,c.id),0),days=[...Array(6)].map((_,i)=>{const d=new Date(Date.now()-(5-i)*864e5).toISOString().slice(0,10);return sum(S.tx.filter(t=>t.status=='COMPLETED'&&t.at.slice(0,10)==d))}),mx=Math.max(1,...days);
++ const sv=S.tx.flatMap(t=>t.items).filter(i=>i.type=='SERVICE').reduce((a,i)=>a+i.price,0),pr=S.tx.flatMap(t=>t.items).filter(i=>i.type=='PRODUCT').reduce((a,i)=>a+i.price,0);
++ return`<h2>Overview</h2><div class="grid"><div class="stat"><b>${money(sum(today))}</b><span>Today’s sales</span></div><div class="stat"><b>${today.length}</b><span>Today’s transactions</span></div><div class="stat"><b>${S.cs.length}</b><span>Customers</span></div><div class="stat"><b>${liab}</b><span>Points liability (${money(liab/5)})</span></div><div class="stat"><b>${S.refs.filter(r=>r.st=='PENDING').length}</b><span>Pending referrals</span></div><div class="stat"><b>${money(S.sms.length*S.cfg.sms)}</b><span>${S.sms.length} SMS cost est.</span></div></div>
++<div class="card" style="margin-top:12px"><h3>Sales, last 6 days</h3><div class="bars">${days.map(v=>`<div title="${v}" style="height:${v/mx*100}%"></div>`).join('')}</div><p class="mu">Services ${money(sv)} · Products ${money(pr)}</p></div>
++<div class="card"><h3>Recent transactions</h3>${S.tx.slice(-5).reverse().map(t=>`<div class="li"><span>${t.id} · ${t.phone}<br><span class="mu">${t.items.map(i=>i.name).join(', ')}</span></span><span>${money(t.total)}<br><span class="pill">+${t.pts}</span></span></div>`).join('')}</div>`}
++
++function repUI(){const g=view.rg||'7',cut=g=='all'?0:Date.now()-g*864e5,T=S.tx.filter(t=>t.status=='COMPLETED'&&new Date(t.at)>=cut),its=T.flatMap(t=>t.items),sm=(a)=>a.reduce((x,i)=>x+i.price,0),sv=sm(its.filter(i=>i.type=='SERVICE')),pr=sm(its.filter(i=>i.type=='PRODUCT')),earned=S.led.filter(l=>l.pts>0&&new Date(l.at)>=cut).reduce((a,l)=>a+l.pts,0),red=-S.led.filter(l=>l.type=='REDEEM'&&new Date(l.at)>=cut).reduce((a,l)=>a+l.pts,0),sm2=S.sms.filter(m=>new Date(m.at)>=cut),ok=sm2.filter(m=>m.st!='FAILED').length,newC=S.cs.filter(c=>new Date(c.created)>=cut).length,ret=S.cs.filter(c=>S.tx.filter(t=>t.c==c.id).length>1).length,camp={};sm2.forEach(m=>{const k=m.camp||'No campaign';camp[k]=(camp[k]||0)+1});const st=(b,s)=>`<div class="stat"><b>${b}</b><span>${s}</span></div>`;return`<h2>Reports</h2><select onchange="view.rg=this.value;render()">${[['1','Today'],['7','Last 7 days'],['30','Last 30 days'],['all','All time']].map(o=>`<option value="${o[0]}"${o[0]==g?' selected':''}>${o[1]}</option>`).join('')}</select><div class="grid">${st(money(sv+pr),'Sales ('+T.length+' tx)')}${st(money(sv),'Services')}${st(money(pr),'Products')}${st(earned,'Points earned')}${st(red,'Points redeemed')}${st(S.cs.reduce((a,c)=>a+bal(S,c.id),0),'Points liability')}${st(newC+' / '+ret,'New / returning')}${st(S.refs.filter(r=>r.st=='REWARDED').length+'/'+S.refs.length,'Referral conversion')}${st(S.vo.filter(v=>v.st=='REDEEMED').length+'/'+S.vo.length,'Vouchers used')}${st((sm2.length?Math.round(ok/sm2.length*100):0)+'%','SMS delivered · '+money(sm2.length*S.cfg.sms))}</div><div class="card" style="margin-top:12px"><h3>Campaign performance (SMS)</h3>${Object.entries(camp).map(e=>`<div class="li"><span>${e[0]}</span><b>${e[1]}</b></div>`).join('')}</div><button class="big" onclick="csv(${cut})">Copy CSV</button>`}
++
++function csv(cut){const r=['id,phone,total,eligible,points,status,date',...S.tx.filter(t=>new Date(t.at)>=cut).map(t=>[t.id,t.phone,t.total,t.elig,t.pts,t.status,t.at].join(','))].join('\n');navigator.clipboard?navigator.clipboard.writeText(r).then(()=>toast('CSV copied'),()=>toast('Copy failed')):toast('Copy unavailable')}
++
++function overUI2(){const D0=now().slice(0,10),ok=t=>t.status=='COMPLETED',tod=S.tx.filter(t=>ok(t)&&t.at.slice(0,10)==D0),sum=a=>a.reduce((x,t)=>x+t.total,0),liab=S.cs.reduce((a,c)=>a+bal(S,c.id),0),tl=S.led.filter(l=>l.at.slice(0,10)==D0),aw=tl.filter(l=>l.pts>0).reduce((a,l)=>a+l.pts,0),rd=-tl.filter(l=>l.type=='REDEEM').reduce((a,l)=>a+l.pts,0),sm=S.sms.filter(m=>m.at.slice(0,10)==D0),ret=S.cs.filter(c=>S.tx.filter(t=>t.c==c.id).length>1).length,days=[...Array(6)].map((_,i)=>{const d=new Date(Date.now()-(5-i)*864e5).toISOString().slice(0,10);return[d.slice(5),sum(S.tx.filter(t=>ok(t)&&t.at.slice(0,10)==d))]}),mx=Math.max(1,...days.map(d=>d[1])),its=S.tx.filter(ok).flatMap(t=>t.items),sv=its.filter(i=>i.type=='SERVICE').reduce((a,i)=>a+i.price,0),pr=its.filter(i=>i.type=='PRODUCT').reduce((a,i)=>a+i.price,0),st=(b,s)=>`<div class="stat"><b>${b}</b><span>${s}</span></div>`,pc=v=>Math.round(v/Math.max(1,sv+pr)*100),br=(n,v)=>`<div class="li"><span>${n}</span><b>${money(v)} (${pc(v)}%)</b></div><div style="background:var(--ac2);border-radius:6px;margin-bottom:8px"><div style="height:10px;width:${pc(v)}%;background:var(--ac);border-radius:6px"></div></div>`;
++return`<h2>Overview</h2><div class="grid">${st(money(sum(tod)),'Today’s sales')}${st(tod.length,'Today’s transactions')}${st(aw,'Points awarded today')}${st(rd,'Points redeemed today')}${st(S.cs.length,'Customers')}${st(ret,'Returning customers')}${st(S.refs.filter(r=>r.st=='PENDING').length,'Pending referrals')}${st(liab+' pts',money(liab/5)+' liability')}${st(sm.length,'SMS today · '+money(sm.length*S.cfg.sms))}</div><div class="row" style="margin:12px 0"><button onclick="go('sale')">+ New Sale</button><button class="s" onclick="go('redeem')">Redeem</button><button class="s" onclick="go('refs')">Referrals</button><button class="s" onclick="go('sms')">SMS</button></div><div class="two"><div class="card"><h3>Sales, last 6 days</h3><div class="bars" style="height:140px">${days.map(d=>`<div title="${d[1]}" style="height:${d[1]/mx*100}%"></div>`).join('')}</div><div class="row mu">${days.map(d=>`<span>${d[0]}</span>`).join('')}</div></div><div class="card"><h3>Category breakdown</h3>${br('Services',sv)}${br('Products',pr)}</div></div><div class="two"><div class="card"><h3>Recent transactions</h3>${S.tx.slice(-6).reverse().map(t=>`<div class="li"><span>${t.id} · ${t.phone}<br><span class="mu">${t.items.map(i=>i.name).join(', ')}</span></span><span>${money(t.total)}<br>${bd(t.status)} +${t.pts}</span></div>`).join('')}</div><div><div class="card"><h3>Recent customer activity</h3>${S.led.slice(-5).reverse().map(l=>`<div class="li"><span>${nmc(l.c)}<br><span class="mu">${l.desc}</span></span><b>${l.pts>0?'+':''}${l.pts}</b></div>`).join('')}</div><div class="card"><h3>Recent SMS</h3>${S.sms.slice(-4).reverse().map(m=>`<div class="li"><span>${m.phone}<br><span class="mu">${m.msg.slice(0,50)}…</span></span>${bd(m.st)}</div>`).join('')}</div></div></div>`}
++
++function repUI2(){const days=[...Array(7)].map((_,i)=>{const d=new Date(Date.now()-(6-i)*864e5).toISOString().slice(0,10);return[d.slice(5),S.tx.filter(t=>t.status=='COMPLETED'&&t.at.slice(0,10)==d).reduce((a,t)=>a+t.total,0)]}),mx=Math.max(1,...days.map(d=>d[1])),w=Date.now(),sn=n=>S.tx.filter(t=>t.status=='COMPLETED'&&new Date(t.at)>=w-n*864e5).reduce((a,t)=>a+t.total,0);return repUI()+`<div class="two" style="margin-top:12px"><div class="card"><h3>Daily sales, last 7 days</h3><div class="bars" style="height:140px">${days.map(d=>`<div title="${d[1]}" style="height:${d[1]/mx*100}%"></div>`).join('')}</div><div class="row mu">${days.map(d=>`<span>${d[0]}</span>`).join('')}</div><p class="mu">Weekly ${money(sn(7))} · Monthly ${money(sn(30))}</p></div><div class="card"><h3>Consent and SMS cost</h3><div class="li"><span>Marketing opted in</span><b>${S.cs.filter(c=>c.mkt).length}/${S.cs.length}</b></div><div class="li"><span>Promotional SMS</span><b>${S.sms.filter(m=>m.camp).length}</b></div><div class="li"><span>Transactional only</span><b>${S.sms.filter(m=>!m.camp).length}</b></div><div class="li"><span>Total SMS cost</span><b>${money(S.sms.length*S.cfg.sms)}</b></div></div></div>`}
+diff --git a/js/modules/settings.js b/js/modules/settings.js
+new file mode 100644
+index 0000000..42e42e9
+--- /dev/null
++++ b/js/modules/settings.js
+@@ -0,0 +1,11 @@
++// modules/settings
++// Demo-era module: shared state and helpers live on window so inline handlers keep working.
++// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
++
++Object.assign(window,{setUI,set2,set3});
++
++function setUI(){return`<h2>Settings</h2><div class="card"><div class="li"><span>Services rate</span><b>${S.cfg.sv} pts / KES 100</b></div><div class="li"><span>Products rate</span><b>${S.cfg.pr} pts / KES 100</b></div><div class="li"><span>Redemption</span><b>100 pts = KES 20</b></div><div class="li"><span>Referral</span><b>50 / 30 pts above KES 50</b></div><div class="li"><span>Reward draw</span><b>Off (demo only, pending legal review)</b></div></div><button class="d big" onclick="if(confirm('Reset all demo data?')){S=seed();save();tab='over';render();toast('Demo reset')}">Reset demo data</button>`}
++
++function set2(){return`<h2>Settings</h2><div class="two"><div class="card"><label>Services points per KES 100</label><input inputmode="numeric" value="${S.cfg.sv}" onchange="S.cfg.sv=+this.value||0;save()"><label>Products points per KES 100</label><input inputmode="numeric" value="${S.cfg.pr}" onchange="S.cfg.pr=+this.value||0;save()"><label>Inviter / invitee points</label><div class="row"><input value="${S.cfg.ref}" onchange="S.cfg.ref=+this.value||0;save()"><input value="${S.cfg.inv}" onchange="S.cfg.inv=+this.value||0;save()"></div><label>SMS cost (KES)</label><input value="${S.cfg.sms}" onchange="S.cfg.sms=+this.value||0;save()"><p class="mu">Rate changes apply to new sales only. 100 points = KES 20; minimum redemption 100; referral needs a purchase above KES 50.</p></div><div class="card"><h3>Production pipeline</h3><p class="mu">Simulated here behind one data layer: Firebase Auth and Phone OTP, Firestore, Cloud Run writes, Host Pinnacle SMS (keys in Secret Manager), App Check, Firestore Rules, rate limiting. Audit entries: ${S.audit.length}.</p></div></div><button class="d big" onclick="if(confirm('Reset all demo data?')){S=seed();save();tab='over';render();toast('Demo reset')}">Reset demo data</button>`}
++
++function set3(){const a=S.audit.slice(-12).reverse().map(x=>`<div class="li"><span>${x.a}</span><span class="mu">${dt(x.at)}</span></div>`).join('')||'<span class="mu">No events yet.</span>';return set2().replace(`onclick="if(confirm('Reset all demo data?')){S=seed();save();tab='over';render();toast('Demo reset')}"`,`onclick="ask('Reset all demo data?',()=>{S=seed();save();tab='over';render();toast('Demo reset')})"`).replace('<button class="d big"',`<div class="card"><h3>Audit and consent log</h3>${a}</div><button class="d big"`)}
+diff --git a/js/modules/sms.js b/js/modules/sms.js
+new file mode 100644
+index 0000000..1e53f97
+--- /dev/null
++++ b/js/modules/sms.js
+@@ -0,0 +1,28 @@
++// modules/sms
++// Demo-era module: shared state and helpers live on window so inline handlers keep working.
++// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
++
++Object.assign(window,{sendSms,smsUI,tplUI,tp,sms2,retry,sms3,tplUI2,ins,cc});
++
++function sendSms(S,c,type,vars,at){let b=(S.tpl&&S.tpl[type]||TPL[type]).replace(/{(\w+)}/g,(m,k)=>vars[k]);let camp=null;
++ if(c.mkt){const td=now().slice(0,10);camp=S.camps.find(k=>k.id==S.act&&k.on&&(!k.end||k.end>=td)&&(!k.start||k.start<=td));if(camp)b+=' '+camp.ad+' '+(camp.url||'https://perks.samuhia.co.ke')+' Reply STOP to opt out.'}
++ const fail=!at&&Math.random()<0.0;S.sms.push({id:'m'+S.sms.length,phone:c.phone,type,camp:camp&&camp.name,msg:b,st:fail?'FAILED':'SENT',cost:S.cfg.sms,at:at||now()})}
++
++function smsUI(){return`<h2>SMS Centre</h2><p class="mu">Simulated only, no real SMS is sent. ${S.sms.length} messages · ${money(S.sms.length*S.cfg.sms)} estimated.</p>${S.sms.slice(-25).reverse().map(m=>`<div class="card"><div class="li"><b>${m.phone}</b><span class="pill ${m.st=='FAILED'?'f':''}">${m.st}</span></div><p style="margin:0;font-size:14px">${m.msg}</p><span class="mu">${m.type} · ${m.camp?'campaign: '+m.camp:'no campaign (no consent)'} · KES ${m.cost.toFixed(2)}</span></div>`).join('')}`}
++
++function tplUI(){const k=view.tk||'sale',b=S.tpl[k];return`<h2>SMS Templates</h2><select onchange="view.tk=this.value;render()">${Object.keys(S.tpl).map(x=>`<option${x==k?' selected':''}>${x}</option>`).join('')}</select><textarea id="tb" rows="5" oninput="tp()">${b}</textarea><p class="mu">Placeholders: {amount} {pts} {bal} {val} {code}. ${b.length} chars · ${Math.ceil(b.length/160)} segment(s). Campaign adverts are added automatically, only for customers with marketing consent.</p><div class="card"><h3>Live preview</h3><div id="tpv"></div></div><button class="big" onclick="S.tpl['${k}']=$('#tb').value;save();toast('Template saved')">Save template</button>`}
++
++function tp(){const t=$('#tb').value,cp=S.camps.find(k=>k.id==S.act),v={amount:600,pts:36,bal:255,val:51,code:'DISC50'};$('#tpv').innerHTML='<p>'+t.replace(/{(\w+)}/g,(m,k)=>v[k]??m)+'</p><p class="mu">+ '+cp.ad+' https://perks.samuhia.co.ke Reply STOP to opt out.</p>'}
++
++function sms2(){const f=view.sf||'all',M=S.sms.filter(m=>f=='all'||(f=='FAILED'?m.st=='FAILED':m.type==f));return`<h2>SMS Centre</h2><p class="mu">Simulated only. ${S.sms.length} messages · ${money(S.sms.length*S.cfg.sms)} est.</p><select onchange="view.sf=this.value;render()">${[['all','All'],['sale','Receipts'],['ref','Referral'],['redeem','Redemption'],['voucher','Voucher'],['welcome','Welcome'],['FAILED','Failed']].map(o=>`<option value="${o[0]}"${o[0]==f?' selected':''}>${o[1]}</option>`).join('')}</select>${M.slice(-30).reverse().map(m=>`<div class="card"><div class="li"><b>${m.phone}</b>${bd(m.st)}</div><p style="margin:0;font-size:14px">${m.msg}</p><span class="mu">${m.type} · ${m.camp?'campaign: '+m.camp:'no promo (no consent)'} · KES ${m.cost.toFixed(2)}</span>${m.st=='FAILED'?`<button style="margin-top:8px" onclick="retry('${m.id}')">Retry</button>`:''}</div>`).join('')}`}
++
++function retry(id){const m=S.sms.find(x=>x.id==id);m.st='RETRIED';render();setTimeout(()=>{m.st='SENT';save();render();toast('Retry delivered (simulated)')},900)}
++
++function sms3(){const f=view.sf||'all',M=S.sms.filter(m=>(f=='all'||(f=='FAILED'?m.st=='FAILED':m.type==f))&&m.phone.includes(fx(view.sq))).slice().reverse().slice(0,40),o=S.sms.find(m=>m.id==view.sm);
++return`<h2>SMS Centre</h2><p class="mu">Simulated only. ${S.sms.length} messages · ${money(S.sms.length*S.cfg.sms)} est.</p><div class="bar"><input placeholder="Search phone" value="${view.sq||''}" onchange="view.sq=this.value;render()"><select onchange="view.sf=this.value;render()">${[['all','All'],['sale','Receipts'],['ref','Referral'],['redeem','Redemption'],['voucher','Voucher'],['welcome','Welcome'],['FAILED','Failed']].map(o=>`<option value="${o[0]}"${o[0]==f?' selected':''}>${o[1]}</option>`).join('')}</select></div>${o?`<div class="card"><h3>${o.id} · ${o.phone}</h3><p>${o.msg}</p><p class="mu">${o.type} · campaign: ${o.camp||'none (no marketing consent)'} · ${bd(o.st)} · KES ${o.cost.toFixed(2)} · ${dt(o.at)}</p><div class="row">${o.st=='FAILED'?`<button onclick="retry('${o.id}')">Retry</button>`:''}<button class="s" onclick="view.sm=null;render()">Close</button></div></div>`:''}<table class="tb"><thead><tr><th>Recipient<th>Type<th>Campaign<th>Message<th>Status<th>Cost<th>Time<th></tr></thead>${M.map(m=>`<tr class="cr" onclick="view.sm='${m.id}';render()"><td>${m.phone}<td>${m.type}<td>${m.camp||'-'}<td>${m.msg.slice(0,55)}…<td>${bd(m.st)}<td>${m.cost.toFixed(2)}<td>${dt(m.at)}<td>${m.st=='FAILED'?`<button onclick="event.stopPropagation();retry('${m.id}')">Retry</button>`:''}`).join('')}</table><div class="mv">${M.map(m=>`<div class="card"><div class="li"><b>${m.phone}</b>${bd(m.st)}</div><p style="margin:0;font-size:14px">${m.msg}</p><span class="mu">${m.type} · ${m.camp?'campaign: '+m.camp:'no promo (no consent)'} · KES ${m.cost.toFixed(2)}</span>${m.st=='FAILED'?`<button style="margin-top:8px" onclick="retry('${m.id}')">Retry</button>`:''}</div>`).join('')}</div>`}
++
++function tplUI2(){const k=view.tk||'sale',b=S.tpl[k],at=S.tplAt||{};return`<h2>SMS Templates</h2><div class="split"><div class="card"><select onchange="view.tk=this.value;render()">${Object.keys(S.tpl).map(x=>`<option${x==k?' selected':''}>${x}</option>`).join('')}</select><textarea id="tb" rows="6" oninput="tp();cc()">${b}</textarea><p class="mu" id="cc"></p><div>${['{amount}','{pts}','{bal}','{val}','{code}'].map(p=>`<span class="pill" style="cursor:pointer;margin-right:4px" onclick="ins('${p}')">${p}</span>`).join('')}</div><p class="mu">Last updated ${at[k]?dt(at[k]):'seed'}. Campaign adverts attach automatically, only with marketing consent.</p><button class="big" onclick="S.tpl['${k}']=$('#tb').value;(S.tplAt=S.tplAt||{})['${k}']=now();save();toast('Template saved');render()">Save template</button></div><div><div class="card"><h3>Live preview with campaign</h3><div id="tpv"></div></div><div class="card"><h3>All templates</h3>${Object.keys(S.tpl).map(x=>`<div class="li" style="cursor:pointer" onclick="view.tk='${x}';render()"><span>${x}</span><span class="mu">${S.tpl[x].length} chars</span></div>`).join('')}</div></div></div>`}
++
++function ins(p){const t=$('#tb');t.value+=p;tp();cc()}
++
++function cc(){const n=$('#tb').value.length;$('#cc').textContent=n+' chars · '+Math.ceil(n/160)+' SMS segment(s)'}
+diff --git a/js/modules/transactions.js b/js/modules/transactions.js
+new file mode 100644
+index 0000000..d8e2e58
+--- /dev/null
++++ b/js/modules/transactions.js
+@@ -0,0 +1,51 @@
++// modules/transactions
++// Demo-era module: shared state and helpers live on window so inline handlers keep working.
++// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
++
++Object.assign(window,{post,saleUI,parse,upd,record,rec2,doneUI,txUI,rev,txUI2});
++
++function post(S,phone,items,nonElig,at,quiet){
++ let c=S.cs.find(x=>x.phone==phone),isNew=!c;if(!c){c={id:'c'+(S.cs.length+1),phone,code:Math.random().toString(36).slice(2,8).toUpperCase(),mkt:false,by:null,created:at||now()};S.cs.push(c);if(S.tpl)sendSms(S,c,'welcome',{code:c.code},at)}
++ const it=calc(S,items),elig=it.reduce((a,i)=>a+i.price,0),pts=it.reduce((a,i)=>a+i.pts,0),total=elig+nonElig;
++ const t={id:'T'+String(1000+S.tx.length),c:c.id,phone,items:it,total,elig,pts,status:'COMPLETED',at:at||now()};S.tx.push(t);
++ L(S,c.id,'EARN',pts,'Sale '+t.id,at);if(!quiet||true)sendSms(S,c,'sale',{amount:total,pts,bal:bal(S,c.id),val:bal(S,c.id)*20/100},at);
++ const r=S.refs.find(r=>r.to==c.id&&r.st=='PENDING');
++ if(r&&elig>S.cfg.refMin){r.st='REWARDED';r.amt=elig;r.txId=t.id;const f=S.cs.find(x=>x.id==r.from);
++  L(S,f.id,'REFERRAL',S.cfg.ref,'Referral reward',at);L(S,c.id,'REFERRAL',S.cfg.inv,'Welcome referral reward',at);
++  sendSms(S,f,'ref',{pts:S.cfg.ref,bal:bal(S,f.id)},at);sendSms(S,c,'ref',{pts:S.cfg.inv,bal:bal(S,c.id)},at);t.refRewarded=true}
++ return{t,c,isNew}}
++
++function saleUI(){if(done)return doneUI();
++ return`<h2>New Sale</h2><div class="card"><label>Customer phone</label><input id="ph" inputmode="tel" placeholder="07XX XXX XXX" value="${D.phone}" oninput="D.phone=this.value;upd()"><div id="lk"></div></div>
++<div class="card"><h3>Items</h3><div id="its">${D.items.map((it,i)=>`<div class="row"><select onchange="D.items[${i}].name=this.value;upd()">${['SERVICE','PRODUCT'].map(t=>`<optgroup label="${t=='SERVICE'?'Services':'Products'}">${CAT[t].map(n=>`<option${n==it.name?' selected':''}>${n}</option>`).join('')}</optgroup>`).join('')}</select><input class="n" style="width:110px" inputmode="numeric" placeholder="KES" value="${it.price}" oninput="D.items[${i}].price=this.value;upd(1)"><button class="n d" onclick="D.items.splice(${i},1);if(!D.items.length)D.items=[{name:'Printing',price:''}];render()">✕</button></div>`).join('')}</div>
++<button class="s" style="width:100%" onclick="D.items.push({name:'Printing',price:''});render()">+ Add item</button>
++<label style="display:block;margin-top:10px">Non-eligible charges (e.g. government fees, earn 0 points)</label><input inputmode="numeric" value="${D.ne}" oninput="D.ne=this.value;upd(1)"></div>
++<div class="card"><label>Referral code (optional)</label><input value="${D.ref}" oninput="D.ref=this.value.toUpperCase();upd(1)" style="text-transform:uppercase"><div id="rf" class="mu"></div></div>
++<div class="card" id="rv"></div><button class="big" id="rec" onclick="record()">RECORD SALE</button>`}
++
++function parse(){const ph=norm(D.phone),items=D.items.filter(i=>+i.price>0).map(i=>({name:i.name,price:Math.round(+i.price)})),ne=Math.max(0,Math.round(+D.ne||0));return{ph,items,ne}}
++
++function upd(soft){const{ph,items,ne}=parse(),c=ph&&S.cs.find(x=>x.phone==ph);
++ $('#lk').innerHTML=!D.phone?'':!ph?'<span class="err">Enter a valid Kenyan number</span>':c?`<div class="ok">Returning customer · ${bal(S,c.id)} pts (${money(bal(S,c.id)/5)})</div>`:'<div class="ok warn">New customer</div>';
++ const rc=D.ref&&S.cs.find(x=>x.code==D.ref);$('#rf').innerHTML=!D.ref?'':rc?`Valid: invited by ${rc.phone}${c&&c.id==rc.id?' <span class=err>(self-referral not allowed)</span>':''}`:'<span class=err>Code not found</span>';
++ const it=calc(S,items),pts=it.reduce((a,i)=>a+i.pts,0),elig=it.reduce((a,i)=>a+i.price,0),b=c?bal(S,c.id):0,camp=S.camps.find(k=>k.id==S.act);
++ $('#rv').innerHTML=`<h3>Review</h3>${it.map(i=>`<div class="li"><span>${i.name} <span class="mu">${i.type.toLowerCase()} @${i.rate}/100</span></span><span>${money(i.price)} · +${i.pts}</span></div>`).join('')}<div class="li"><b>Total</b><b>${money(elig+ne)}</b></div><div class="li"><span>Eligible</span><span>${money(elig)}</span></div><div class="li"><span>Points earned</span><b>${pts}</b></div><div class="li"><span>Balance after</span><b>${b+pts} pts</b></div><p class="mu">SMS advert: ${c&&!c.mkt?'none (no marketing consent)':camp?camp.name:'none'}</p>`}
++
++function record(){if(lock)return;const q=parse();if(!q.ph||!q.items.length)return toast('Enter a valid phone and at least one priced item');ask('Record sale of '+money(q.items.reduce((a,i)=>a+i.price,0)+q.ne)+' for '+q.ph+'?',rec2)}
++
++function rec2(){if(lock)return;const{ph,items,ne}=parse();if(!ph)return toast('Enter a valid phone number');if(!items.length)return toast('Add at least one item with a price');
++ let c=S.cs.find(x=>x.phone==ph);const rc=D.ref&&S.cs.find(x=>x.code==D.ref);if(D.ref&&!rc)return toast('Invalid referral code');if(rc&&c&&rc.id==c.id)return toast('Self-referral not allowed');
++ lock=true;$('#rec').disabled=true;$('#rec').textContent='Recording…';
++ setTimeout(()=>{const r=post(S,ph,items,ne);if(rc&&r.isNew&&!r.c.by){r.c.by=rc.id;if(r.t.elig>S.cfg.refMin){S.refs.push({id:'r'+(S.refs.length+1),from:rc.id,to:r.c.id,amt:0,st:'PENDING'});const x=S.refs[S.refs.length-1];S.refs.pop();/* reuse post logic */
++   x.st='REWARDED';x.amt=r.t.elig;x.txId=r.t.id;S.refs.push(x);L(S,rc.id,'REFERRAL',S.cfg.ref,'Referral reward');L(S,r.c.id,'REFERRAL',S.cfg.inv,'Welcome referral reward');sendSms(S,rc,'ref',{pts:S.cfg.ref,bal:bal(S,rc.id)});sendSms(S,r.c,'ref',{pts:S.cfg.inv,bal:bal(S,r.c.id)});r.t.refRewarded=true}
++  else S.refs.push({id:'r'+(S.refs.length+1),from:rc.id,to:r.c.id,amt:0,st:'PENDING'})}
++  save();lock=false;done={...r,bal:bal(S,r.c.id)};D={phone:'',items:[{name:'Printing',price:''}],ne:'',ref:''};render()},500)}
++
++function doneUI(){const d=done;return`<div class="card"><h2 style="color:var(--ac)">✓ Sale recorded successfully</h2><div class="li"><span>Customer</span><span>${d.c.phone}</span></div><div class="li"><span>Total</span><span>${money(d.t.total)}</span></div><div class="li"><span>Points earned</span><b>${d.t.pts}</b></div><div class="li"><span>New balance</span><b>${d.bal} pts</b></div>${d.t.refRewarded?'<div class="ok">Referral rewarded: inviter +50, invitee +30</div>':''}<div class="li"><span>SMS</span><span class="pill">SENT (simulated)</span></div><button class="big" onclick="go('sale')">New Sale</button><button class="s big" style="margin-top:8px" onclick="view.c=done.c.id;go('cust')">View Customer</button></div>`}
++
++function txUI(){const q=view.tq||'';return`<h2>Transactions</h2><input placeholder="Filter by phone" value="${q}" oninput="view.tq=this.value;render();document.querySelector('input').focus()">${S.tx.filter(t=>t.phone.includes(q.replace(/^0/,'+254'))).slice().reverse().map(t=>`<div class="card"><div class="li" onclick="view.rt=view.rt=='${t.id}'?null:'${t.id}';render()"><span><b>${t.id}</b> · ${t.phone}<br><span class="mu">${new Date(t.at).toLocaleString('en-KE',{timeZone:'Africa/Nairobi'})} · operator admin</span></span><span>${money(t.total)}<br>${bd(t.status)} +${t.pts}</span></div>${view.rt==t.id?`<div class="ok">${t.items.map(i=>`<div class="li"><span>${i.name} (${i.type})</span><span>${money(i.price)} · ${i.pts} pts @${i.rate}</span></div>`).join('')}<div class="li"><span>Eligible</span><span>${money(t.elig)}</span></div>${t.reason?'<p>Reason: '+t.reason+'</p>':''}${t.status=='COMPLETED'?`<button class="d" onclick="rev('${t.id}')">Reverse sale</button>`:''}</div>`:''}</div>`).join('')}`}
++
++function rev(id){const t=S.tx.find(x=>x.id==id);if(bal(S,t.c)<t.pts)return toast('Customer already spent these points');return ask('Reason for reversal',r=>{if(!r)return;t.status='REVERSED';t.reason=r;L(S,t.c,'REVERSAL',-t.pts,'Reversal of '+id+': '+r);S.audit.push({at:now(),a:'REVERSE '+id+' '+r});save();render()},1)}
++
++function txUI2(){const f=view,T=S.tx.filter(t=>t.phone.includes(fx(f.tq))&&(!f.ts||t.status==f.ts)&&(!f.tc||t.items.some(i=>i.type==f.tc))&&(!f.tm||t.total>=+f.tm)&&(!f.td||t.at.slice(0,10)>=f.td)).slice().reverse(),sm=t=>{const m=S.sms.find(x=>x.phone==t.phone&&x.type=='sale'&&Math.abs(new Date(x.at)-new Date(t.at))<6e4);return m?m.st:'-'},rc=S.tx.find(t=>t.id==f.rt),op=(id,l,v)=>`<option value="${id}"${id==v?' selected':''}>${l}</option>`;
++return`<h2>Transactions</h2><div class="bar"><input placeholder="Phone" value="${f.tq||''}" onchange="view.tq=this.value;render()"><select onchange="view.ts=this.value;render()">${op('','Any status',f.ts)}${op('COMPLETED','Completed',f.ts)}${op('REVERSED','Reversed',f.ts)}</select><select onchange="view.tc=this.value;render()">${op('','Any category',f.tc)}${op('SERVICE','Services',f.tc)}${op('PRODUCT','Products',f.tc)}</select><input inputmode="numeric" placeholder="Min KES" value="${f.tm||''}" onchange="view.tm=this.value;render()"><input type="date" value="${f.td||''}" onchange="view.td=this.value;render()"></div>${rc?`<div class="card"><h3>Receipt ${rc.id} · ${rc.phone} · ${dt(rc.at)}</h3>${rc.items.map(i=>`<div class="li"><span>${i.name} (${i.type})</span><span>${money(i.price)} · ${i.pts} pts @${i.rate}</span></div>`).join('')}<div class="li"><span>Total / eligible</span><b>${money(rc.total)} / ${money(rc.elig)}</b></div>${rc.reason?'<p>Reversed: '+rc.reason+'</p>':''}<div class="row">${rc.status=='COMPLETED'?`<button class="d" onclick="rev('${rc.id}')">Reverse sale</button>`:''}<button class="s" onclick="view.rt=null;render()">Close</button></div></div>`:''}<table class="tb"><thead><tr><th>ID<th>Phone<th>Items<th>Total<th>Eligible<th>Points<th>Date<th>SMS<th>Status<th>Operator</tr></thead>${T.map(t=>`<tr class="cr" onclick="view.rt='${t.id}';render()"><td><b>${t.id}</b><td>${t.phone}<td>${t.items.map(i=>i.name).join(', ')}<td>${money(t.total)}<td>${money(t.elig)}<td>+${t.pts}<td>${dt(t.at)}<td>${sm(t)}<td>${bd(t.status)}<td>admin`).join('')}</table><div class="mv">${T.map(t=>`<div class="card" onclick="view.rt='${t.id}';render();scrollTo(0,0)"><div class="li"><span><b>${t.id}</b> · ${t.phone}<br><span class="mu">${dt(t.at)}</span></span><span>${money(t.total)}<br>${bd(t.status)} +${t.pts}</span></div></div>`).join('')}</div>`}
+diff --git a/js/modules/vouchers.js b/js/modules/vouchers.js
+new file mode 100644
+index 0000000..bbe55c8
+--- /dev/null
++++ b/js/modules/vouchers.js
+@@ -0,0 +1,21 @@
++// modules/vouchers
++// Demo-era module: shared state and helpers live on window so inline handlers keep working.
++// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
++
++Object.assign(window,{award,vouchUI,mkV,bulkV,asgV,voS,vact,vouchUI2});
++
++function award(v,cid){const c=S.cs.find(x=>x.id==cid);v.st='AWARDED';v.c=cid;if(v.type=='POINTS'){L(S,cid,'VOUCHER',v.val,'Voucher '+v.code);v.st='REDEEMED'}sendSms(S,c,'voucher',{code:v.code,val:v.type=='POINTS'?v.val+' pts':'KES '+v.val,bal:bal(S,cid)});S.audit.push({at:now(),a:'AWARD '+v.code+' '+c.phone})}
++
++function vouchUI(){return`<h2>Vouchers</h2><div class="card"><div class="row"><select id="vt"><option>DISCOUNT</option><option>AIRTIME</option><option>POINTS</option></select><input id="vv" inputmode="numeric" placeholder="Value"></div><button class="big" onclick="mkV()">Create voucher</button><button class="s big" style="margin-top:8px" onclick="bulkV()">Bulk add 5 demo vouchers</button></div>${S.vo.slice().reverse().map(v=>`<div class="card"><div class="li"><b>${v.code}</b>${bd(v.st)}</div><span class="mu">${v.type} ${v.val} · ${v.c?nmc(v.c):'unassigned'}</span><div class="row" style="margin-top:8px">${v.st=='AVAILABLE'?`<button class="s" onclick="asgV('${v.id}')">Assign</button>`:''}${v.st=='AWARDED'?`<button onclick="voS('${v.id}','REDEEMED')">Mark redeemed</button>`:''}${v.st=='AVAILABLE'||v.st=='AWARDED'?`<button class="d" onclick="voS('${v.id}','VOID')">Void</button>`:''}</div></div>`).join('')}`}
++
++function mkV(){const v=+$('#vv').value,t=$('#vt').value;if(!v)return toast('Enter a value');S.vo.push({id:'v'+S.vo.length,code:t.slice(0,4)+v+Math.random().toString(36).slice(2,5).toUpperCase(),type:t,val:v,st:'AVAILABLE',c:null,at:now()});save();render()}
++
++function bulkV(){for(let i=0;i<5;i++)S.vo.push({id:'v'+S.vo.length,code:'DEMO'+Math.random().toString(36).slice(2,6).toUpperCase(),type:'DISCOUNT',val:20,st:'AVAILABLE',c:null,at:now()});save();render()}
++
++function asgV(id){ask('Customer phone',v=>{const p=norm(v||''),c=S.cs.find(x=>x.phone==p);if(!c)return toast('Customer not found');award(S.vo.find(x=>x.id==id),c.id);save();render()},1)}
++
++function voS(id,st){const go=()=>{S.vo.find(v=>v.id==id).st=st;S.audit.push({at:now(),a:st+' '+id});save();render()};st=='VOID'?ask('Void this voucher?',go):go()}
++
++function vact(v){return(v.st=='AVAILABLE'?`<button class="s" onclick="event.stopPropagation();asgV('${v.id}')">Assign</button> `:'')+(v.st=='AWARDED'?`<button onclick="voS('${v.id}','REDEEMED')">Mark redeemed</button> `:'')+(v.st=='AVAILABLE'||v.st=='AWARDED'?`<button class="d" onclick="voS('${v.id}','VOID')">Void</button>`:'')}
++
++function vouchUI2(){const V=S.vo.slice().reverse();return`<h2>Vouchers</h2><div class="split rv"><div class="card"><h3>Create voucher</h3><select id="vt"><option>DISCOUNT</option><option>AIRTIME</option><option>POINTS</option></select><input id="vv" inputmode="numeric" placeholder="Value"><button class="big" onclick="mkV()">Create voucher</button><button class="s big" style="margin-top:8px" onclick="bulkV()">Bulk add 5 demo vouchers</button></div><div><table class="tb"><thead><tr><th>Code<th>Type<th>Value<th>Status<th>Customer<th>Created<th>Actions</tr></thead>${V.map(v=>`<tr><td><b>${v.code}</b><td>${v.type}<td>${v.val}<td>${bd(v.st)}<td>${v.c?nmc(v.c):'-'}<td>${dt(v.at)}<td>${vact(v)}`).join('')}</table><div class="mv">${V.map(v=>`<div class="card"><div class="li"><b>${v.code}</b>${bd(v.st)}</div><span class="mu">${v.type} ${v.val} · ${v.c?nmc(v.c):'unassigned'}</span><div class="row" style="margin-top:8px">${vact(v)}</div></div>`).join('')}</div></div></div>`}
+diff --git a/package.json b/package.json
+new file mode 100644
+index 0000000..0a55eaf
+--- /dev/null
++++ b/package.json
+@@ -0,0 +1,12 @@
++{
++  "name": "perks",
++  "private": true,
++  "type": "module",
++  "scripts": {
++    "start": "npx serve .",
++    "test": "node tests/smoke.mjs"
++  },
++  "devDependencies": {
++    "jsdom": "^24.0.0"
++  }
++}
+diff --git a/tests/smoke.mjs b/tests/smoke.mjs
+new file mode 100644
+index 0000000..af33f72
+--- /dev/null
++++ b/tests/smoke.mjs
+@@ -0,0 +1,20 @@
++import { JSDOM } from 'jsdom';
++const dom = new JSDOM('<!doctype html><header><div id="who"></div></header><main id="app"></main><nav id="nav"></nav><div id="toast"></div>', { url: 'https://perks.samuhia.co.ke' });
++globalThis.window = globalThis;
++globalThis.document = dom.window.document;
++globalThis.localStorage = dom.window.localStorage;
++await import('../js/app.js');
++const w = globalThis;
++const tabs = ['over','sale','cust','txn','redeem','refs','vouch','camp','sms','tpl','rep','set','more'];
++w.S.user = { role: 'op' };
++for (const t of tabs) { w.go(t); if (!document.querySelector('#app').innerHTML) throw new Error('empty tab ' + t); }
++w.S.user = { role: 'cust', id: 'c1' }; w.render();
++w.S.user = { role: 'op' }; w.go('sale');
++const before = w.bal(w.S, 'c1');
++w.D.phone = '0712345678'; w.D.items = [{ name: 'Printing', price: '100' }, { name: 'USB cables', price: '200' }];
++w.rec2();
++await new Promise((r) => setTimeout(r, 700));
++const gained = w.bal(w.S, 'c1') - before;
++if (gained !== 15) throw new Error('expected 15 points (7+8), got ' + gained);
++console.log('smoke OK, points gained', gained);
++process.exit(0);
