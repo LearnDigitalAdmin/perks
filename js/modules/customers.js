@@ -1,22 +1,28 @@
 // modules/customers
-// Demo-era module: shared state and helpers live on window so inline handlers keep working.
-// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
+import { ask, render } from '../app/shell.js';
+import { registerActions } from '../core/actions.js';
+import { S, view } from '../core/state.js';
+import { ap, bd, fx, money, nmc, norm, toast } from '../core/utils.js';
+import { bal } from './points.js';
+import { errText } from '../services/api.js';
+import { svc } from '../services/index.js';
 
-Object.assign(window,{custListUI,prof,custList2,addCust,addC2,c_t,prof2});
+export function custList2(){const q=view.q||'',C=S.cs.filter(c=>c.phone.includes(fx(q))),sp=c=>c.spend??S.tx.filter(t=>t.c==c.id&&t.status=='COMPLETED').reduce((a,t)=>a+t.elig,0),n=c=>c.txCount??S.tx.filter(t=>t.c==c.id).length,sel=view.c?S.cs.find(x=>x.id==view.c):null;
+return`<h2>Customers</h2><div class="bar"><input placeholder="Search phone" value="${q}" data-on-change="modules_customers_4"><button data-on-click="modules_customers_5">+ Add customer</button></div><div class="split${sel?' sel':''}"><div><table class="tb"><thead><tr><th>Phone<th>Points<th>Value<th>Lifetime spend<th>Sales<th>Code<th>Registered<th>Marketing</tr></thead>${C.map(c=>`<tr class="cr" data-on-click="modules_customers_1" ${ap([c.id],'click')} role="button" tabindex="0"><td><b>${c.phone}</b><td>${bal(S,c.id)}<td>${money(bal(S,c.id)/5)}<td>${money(sp(c))}<td>${n(c)}<td>${c.code}<td>${new Date(c.created).toLocaleDateString('en-KE')}<td>${c.mkt?'Yes':'No'}`).join('')}</table><div class="mv">${C.map(c=>`<div class="card" data-on-click="modules_customers_2" ${ap([c.id],'click')} role="button" tabindex="0"><div class="li"><b>${c.phone}</b><b>${bal(S,c.id)} pts</b></div><span class="mu">${money(bal(S,c.id)/5)} · spend ${money(sp(c))} · ${n(c)} sales · ${c.code} · marketing ${c.mkt?'yes':'no'}</span></div>`).join('')}</div></div><div>${sel?`<button class="s mv" data-on-click="modules_customers_3">← Back</button>`+prof2(sel):'<p class="mu">Select a customer to see their profile.</p>'}</div></div>`}
 
-function custListUI(){const q=view.q||'',list=S.cs.filter(c=>c.phone.includes(q.replace(/^0/,'+254')));
- if(view.c){const c=S.cs.find(x=>x.id==view.c);return`<button class="s" onclick="view.c=null;render()">← Back</button>${prof(c)}`}
- return`<h2>Customers</h2><input placeholder="Search phone" value="${q}" oninput="view.q=this.value;render();document.querySelector('input').focus()">${list.map(c=>`<div class="card" onclick="view.c='${c.id}';render()"><div class="li"><b>${c.phone}</b><b>${bal(S,c.id)} pts</b></div><span class="mu">${money(bal(S,c.id)/5)} · code ${c.code} · marketing ${c.mkt?'yes':'no'} · ${S.tx.filter(t=>t.c==c.id).length} sales</span></div>`).join('')||'<p class="mu">No customers found.</p>'}`}
+export function addCust(){ask('Customer phone',v=>addC2(v),1)}
 
-function prof(c){return`<h2>${c.phone}</h2><div class="pts"><b>${bal(S,c.id)} pts</b>${money(bal(S,c.id)/5)} value · code ${c.code}</div><div class="card" style="margin-top:12px"><h3>Points ledger</h3>${S.led.filter(l=>l.c==c.id).slice(-10).reverse().map(l=>`<div class="li"><span>${l.desc}<br><span class="mu">${l.type}</span></span><span>${l.pts>0?'+':''}${l.pts} → ${l.after}</span></div>`).join('')}</div>`}
+export async function addC2(v){const p=norm(v||'');if(!p)return toast('Invalid phone');try{const id=await svc.addCustomer(p);view.c=id;toast('Customer ready')}catch(e){toast(errText(e))}render()}
 
-function custList2(){const q=view.q||'',C=S.cs.filter(c=>c.phone.includes(fx(q))),sp=c=>S.tx.filter(t=>t.c==c.id&&t.status=='COMPLETED').reduce((a,t)=>a+t.elig,0),n=c=>S.tx.filter(t=>t.c==c.id).length,sel=view.c?S.cs.find(x=>x.id==view.c):null;
-return`<h2>Customers</h2><div class="bar"><input placeholder="Search phone" value="${q}" onchange="view.q=this.value;render()"><button onclick="addCust()">+ Add customer</button></div><div class="split${sel?' sel':''}"><div><table class="tb"><thead><tr><th>Phone<th>Points<th>Value<th>Lifetime spend<th>Sales<th>Code<th>Registered<th>Marketing</tr></thead>${C.map(c=>`<tr class="cr" onclick="view.c='${c.id}';render()"><td><b>${c.phone}</b><td>${bal(S,c.id)}<td>${money(bal(S,c.id)/5)}<td>${money(sp(c))}<td>${n(c)}<td>${c.code}<td>${new Date(c.created).toLocaleDateString('en-KE')}<td>${c.mkt?'Yes':'No'}`).join('')}</table><div class="mv">${C.map(c=>`<div class="card" onclick="view.c='${c.id}';render()"><div class="li"><b>${c.phone}</b><b>${bal(S,c.id)} pts</b></div><span class="mu">${money(bal(S,c.id)/5)} · spend ${money(sp(c))} · ${n(c)} sales · ${c.code} · marketing ${c.mkt?'yes':'no'}</span></div>`).join('')}</div></div><div>${sel?`<button class="s mv" onclick="view.c=null;render()">← Back</button>`+prof2(sel):'<p class="mu">Select a customer to see their profile.</p>'}</div></div>`}
+export async function c_t(id){const c=S.cs.find(y=>y.id==id);if(!c)return;try{await svc.setConsent({customer:c,value:!c.mkt})}catch(e){toast(errText(e))}render()}
 
-function addCust(){ask('Customer phone',v=>addC2(v),1)}
+export function prof2(c){const L2=(t,rows)=>`<div class="card"><h3>${t}</h3>${rows.join('')||'<span class="mu">None</span>'}</div>`;return`<div class="pts"><b>${bal(S,c.id)} pts</b>${money(bal(S,c.id)/5)} · ${c.phone} · code ${c.code}</div><div class="card" style="margin-top:12px"><div class="li"><span>Marketing consent</span><button class="s" data-on-click="modules_customers_6" ${ap([c.id],'click')}>${c.mkt?'Opted in':'Opted out'}</button></div></div>${L2('Transactions',S.tx.filter(t=>t.c==c.id).slice(-6).reverse().map(t=>`<div class="li"><span>${t.id} ${t.items.map(i=>i.name).join(', ')}</span><span>${money(t.total)} ${bd(t.status)}</span></div>`))}${L2('Points ledger',S.led.filter(l=>l.c==c.id).slice(-8).reverse().map(l=>`<div class="li"><span>${l.desc}<br><span class="mu">${l.type}</span></span><span>${l.pts>0?'+':''}${l.pts} → ${l.after}</span></div>`))}${L2('Vouchers and referrals',[...S.vo.filter(v=>v.c==c.id).map(v=>`<div class="li"><span>${v.code}</span>${bd(v.st)}</div>`),...S.refs.filter(r=>r.from==c.id||r.to==c.id).map(r=>`<div class="li"><span>${nmc(r.from)} → ${nmc(r.to)}</span>${bd(r.st)}</div>`)])}${L2('SMS history',S.sms.filter(m=>m.phone==c.phone).slice(-5).reverse().map(m=>`<div class="li"><span>${m.msg.slice(0,80)}…</span>${bd(m.st)}</div>`))}`}
 
-function addC2(v){const p=norm(v||'');if(!p)return toast('Invalid phone');if(S.cs.some(c=>c.phone==p))return toast('Already exists');const c={id:'c'+(S.cs.length+1),phone:p,code:Math.random().toString(36).slice(2,8).toUpperCase(),mkt:false,by:null,created:now()};S.cs.push(c);sendSms(S,c,'welcome',{code:c.code});view.c=c.id;save();render()}
-
-function c_t(id){const x=S.cs.find(y=>y.id==id);x.mkt=!x.mkt;S.audit.push({at:now(),a:'CONSENT '+x.phone+' '+x.mkt});save();render()}
-
-function prof2(c){const L2=(t,rows)=>`<div class="card"><h3>${t}</h3>${rows.join('')||'<span class="mu">None</span>'}</div>`;return`<div class="pts"><b>${bal(S,c.id)} pts</b>${money(bal(S,c.id)/5)} · ${c.phone} · code ${c.code}</div><div class="card" style="margin-top:12px"><div class="li"><span>Marketing consent</span><button class="s" onclick="c_t('${c.id}')">${c.mkt?'Opted in':'Opted out'}</button></div></div>${L2('Transactions',S.tx.filter(t=>t.c==c.id).slice(-6).reverse().map(t=>`<div class="li"><span>${t.id} ${t.items.map(i=>i.name).join(', ')}</span><span>${money(t.total)} ${bd(t.status)}</span></div>`))}${L2('Points ledger',S.led.filter(l=>l.c==c.id).slice(-8).reverse().map(l=>`<div class="li"><span>${l.desc}<br><span class="mu">${l.type}</span></span><span>${l.pts>0?'+':''}${l.pts} → ${l.after}</span></div>`))}${L2('Vouchers and referrals',[...S.vo.filter(v=>v.c==c.id).map(v=>`<div class="li"><span>${v.code}</span>${bd(v.st)}</div>`),...S.refs.filter(r=>r.from==c.id||r.to==c.id).map(r=>`<div class="li"><span>${nmc(r.from)} → ${nmc(r.to)}</span>${bd(r.st)}</div>`)])}${L2('SMS history',S.sms.filter(m=>m.phone==c.phone).slice(-5).reverse().map(m=>`<div class="li"><span>${m.msg.slice(0,80)}…</span>${bd(m.st)}</div>`))}`}
+registerActions({
+async modules_customers_1(p,event){view.c=p[0];render();try{await svc.openCustomer(p[0]);render()}catch(e){toast(errText(e))}},
+async modules_customers_2(p,event){view.c=p[0];render();try{await svc.openCustomer(p[0]);render()}catch(e){toast(errText(e))}},
+modules_customers_3(p,event){view.c=null;render()},
+modules_customers_4(p,event){view.q=this.value;render()},
+modules_customers_5(p,event){addCust()},
+modules_customers_6(p,event){c_t(p[0])}
+});

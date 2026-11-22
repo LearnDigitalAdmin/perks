@@ -1,13 +1,17 @@
-// core/state
-// Demo-era module: shared state and helpers live on window so inline handlers keep working.
-// The live pipeline replaces data access in modules/data.js and the sms/points writes with Cloud Run calls.
+// Single source of UI state. Imported bindings are live; reassign only through the setters.
 
-window.tab='sale';
+export let S;
+export let tab = 'sale';
+import { newKey } from '../services/api.js';
 
-window.D={phone:'',items:[{name:'Printing',price:''}],ne:'',ref:''};
-
-window.done=null;
-
-window.lock=false;
-
-window.view={};
+// key = idempotency key for this draft; regenerated whenever the draft is edited (see modules/transactions.js).
+export const newDraft = () => ({ phone: '', items: [{ name: 'Printing', price: '' }], ne: '', ref: '', key: newKey() });
+export let D = newDraft();
+export let done = null;
+export let lock = false;
+export const view = {};
+export const setS = (v) => { S = v; };
+export const setTab = (v) => { tab = v; };
+export const setD = (v) => { D = v; };
+export const setDone = (v) => { done = v; };
+export const setLock = (v) => { lock = v; };

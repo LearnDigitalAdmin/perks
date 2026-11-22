@@ -1,24 +1,22 @@
 # Samuhia Perks
 
-Loyalty, rewards, referrals and promotional SMS for Samuhia Cyber. Plain HTML, CSS and ES modules, no build step.
+Loyalty, rewards, referrals and promotional SMS for Samuhia Cyber. Plain HTML, CSS and native ES modules, no build step. Live at https://perks.samuhia.co.ke, backed by the shared Firebase project `plot-9fd6e` (PAY functions: `perks_op`, `perks_me`, `hpSmsWebhook`).
 
-Status: full interactive DEMO (simulated auth, data and SMS). Live wiring comes next, inside the shared DESK/PAY Firebase project and backend.
+Add `?demo=1` to the URL for the local DEMO (simulated data and SMS, kept in the browser, badged DEMO). Live mode never writes customer data to the browser.
 
 ## Structure
-- `index.html` - entry point
-- `css/styles.css` - design tokens and responsive layout (bottom nav on phones, sidebar and tables from 900px)
-- `js/app.js` - entry; imports every module, then bootstraps
-- `js/core/` - constants, utilities, UI state
-- `js/modules/` - one file per domain: data (seed), points, transactions, customers, redemptions, referrals, vouchers, campaigns, sms (+templates), reports, settings, auth, customer-app
-- `js/app/` - shell (router, nav, confirm dialog) and bootstrap
-- `js/firebase/` - public web config and lazy live client (`DEMO_MODE` flag)
-- `tests/smoke.mjs` - renders every screen and records a sale (`npm i && npm test`)
+- `index.html`, `css/styles.css` - shell and responsive layout (bottom nav on phones, sidebar and tables from 900px)
+- `js/app.js` - entry; `app/bootstrap.js` picks live or demo, `app/events.js` delegates all clicks/inputs (no inline handlers)
+- `js/core/` - constants, utils, UI state (live bindings plus setters), action registry
+- `js/services/` - the data boundary: `index.js` switches per call between `live.js` (Firebase callables) and `demo.js` (local simulation); `firebase.js` is the only file that talks to the Firebase SDK; `adapt.js` maps API documents to screen shapes and escapes server text
+- `js/modules/` - one module per domain (screens + handlers); they only call `svc.*`
+- `firebase.json`, `.firebaserc` - hosting site `samuhia-perks` with security headers and an SPA rewrite (`/join?ref=CODE` works)
+- `tests/smoke.mjs` (demo) and `tests/live.e2e.mjs` (live, runs the real PAY backend handlers)
 
-## Run locally
-`npx serve .` (or any static server). Demo operator login: `admin@samuhia.demo` / `Samuhia@2026!`. Demo customer OTP: `123456`.
-
-## Demo to live
-- All business rules (7 and 4 points per KES 100, 100 points = KES 20, referral above KES 50, consent-gated adverts) live in `modules/points`, `transactions`, `redemptions`, `referrals` and `sms`.
-- Live writes must move to the shared backend (Cloud Run + Admin SDK): sales, ledger, redemptions, referral rewards, SMS via the existing provider credentials in Secret Manager. Frontend never writes financial data.
-- Auth: Firebase Auth for operator roles, Phone Auth for customers. Add App Check and Firestore Rules before setting `DEMO_MODE = false`.
-- The reward draw stays DEMO-only until Kenyan legal and regulatory review.
+## Run and test
+```bash
+npx serve .                      # then open the URL; add ?demo=1 for the demo
+npm i && npm test                # demo smoke test
+PAY_FUNCTIONS=../PAY/functions npm run test:e2e   # live end-to-end (build PAY/functions first)
+```
+Setup, deploy and go-live steps: `docs/LIVE.md`. Production checklist: `docs/LIVE-READINESS.md`.

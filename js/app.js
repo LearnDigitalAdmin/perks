@@ -1,22 +1,11 @@
-// Entry point. Order matters: constants, utils and state first, bootstrap (initial render) last.
-import './core/constants.js';
-import './core/utils.js';
-import './core/state.js';
-import './modules/data.js';
-import './modules/points.js';
-import './modules/sms.js';
-import './modules/transactions.js';
-import './modules/customers.js';
-import './modules/redemptions.js';
-import './modules/referrals.js';
-import './modules/vouchers.js';
-import './modules/campaigns.js';
-import './modules/reports.js';
-import './modules/settings.js';
-import './modules/auth.js';
-import './modules/customer-app.js';
-import './app/shell.js';
-import './app/bootstrap.js';
+// Entry point. Everything is a real ES module: no globals, no inline handlers.
+// Live by default. Add ?demo=1 to rehearse on local simulated data (clearly badged DEMO, nothing leaves the browser).
+import { boot } from './app/bootstrap.js';
 import { DEMO_MODE } from './firebase/config.js';
 
-if (!DEMO_MODE) import('./firebase/client.js').then((m) => m.initLive());
+const demo = DEMO_MODE || new URLSearchParams(location.search).get('demo') === '1';
+if (demo) await boot({ live: false });
+else {
+  const { createFirebaseRuntime } = await import('./services/firebase.js');
+  await boot(await createFirebaseRuntime());
+}

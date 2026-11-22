@@ -23,3 +23,5 @@ nav a{flex:1;order:var(--o);text-align:center;padding:8px 2px;font-size:11px;col
 .pts{background:linear-gradient(135deg,#0e9f6e,#0b6e7a);color:#fff;border-radius:16px;padding:20px}.pts b{font-size:42px;display:block}
 .bars{display:flex;gap:6px;align-items:flex-end;height:80px}.bars div{flex:1;background:var(--ac);border-radius:4px 4px 0 0;min-height:2px}
 #toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:10px 16px;border-radius:10px;z-index:20;display:none}
+[data-on-click]{cursor:pointer}
+[role=button]:focus-visible{outline:2px solid var(--ac);outline-offset:2px}

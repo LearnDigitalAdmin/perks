@@ -1,6 +1,7 @@
 // Public Firebase web config (identifiers, not secrets). Restrict the API key by HTTP referrer
-// and enforce App Check and Firestore Rules before turning DEMO_MODE off.
-export const DEMO_MODE = true;
+// (perks.samuhia.co.ke, localhost) in Google Cloud Console > APIs & Services > Credentials.
+// false = live app; add ?demo=1 to the URL for the local demo.
+export const DEMO_MODE = false;
 
 export const firebaseConfig = {
   apiKey: 'AIzaSyDuEPDV2wpBtgfSW6L4v05PVUxeaFkW3k0',

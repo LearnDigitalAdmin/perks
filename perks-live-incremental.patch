@@ -1,0 +1,1460 @@
+diff --git a/.firebaserc b/.firebaserc
+new file mode 100644
+index 0000000..90bdd8c
+--- /dev/null
++++ b/.firebaserc
+@@ -0,0 +1,5 @@
++{
++  "projects": {
++    "default": "plot-9fd6e"
++  }
++}
+diff --git a/README.md b/README.md
+index 606ef5c..a5c35e0 100644
+--- a/README.md
++++ b/README.md
+@@ -1,19 +1,22 @@
+ # Samuhia Perks
+ 
+-Loyalty, rewards, referrals and promotional SMS for Samuhia Cyber. Plain HTML, CSS and native ES modules, no build step.
++Loyalty, rewards, referrals and promotional SMS for Samuhia Cyber. Plain HTML, CSS and native ES modules, no build step. Live at https://perks.samuhia.co.ke, backed by the shared Firebase project `plot-9fd6e` (PAY functions: `perks_op`, `perks_me`, `hpSmsWebhook`).
+ 
+-Status: full interactive DEMO (simulated auth, data and SMS). Live wiring follows inside the shared DESK/PAY Firebase project and backend. See `docs/LIVE-READINESS.md`.
++Add `?demo=1` to the URL for the local DEMO (simulated data and SMS, kept in the browser, badged DEMO). Live mode never writes customer data to the browser.
+ 
+ ## Structure
+-- `index.html` - entry point, strict Content-Security-Policy (no inline scripts or handlers)
+-- `css/styles.css` - tokens and responsive layout (bottom nav on phones, sidebar and tables from 900px)
+-- `js/app.js` - entry; loads `app/bootstrap.js`
+-- `js/core/` - constants, utils, state (live bindings plus setters), action registry
+-- `js/modules/` - one module per domain: data, points, transactions, customers, redemptions, referrals, vouchers, campaigns, sms (with templates), reports, settings, auth, customer-app
+-- `js/app/` - shell (router, nav, confirm dialog), delegated event handling, bootstrap
+-- `js/firebase/` - public web config and lazy live client (`DEMO_MODE`)
+-- `tests/smoke.mjs` - DOM-driven end-to-end smoke test
++- `index.html`, `css/styles.css` - shell and responsive layout (bottom nav on phones, sidebar and tables from 900px)
++- `js/app.js` - entry; `app/bootstrap.js` picks live or demo, `app/events.js` delegates all clicks/inputs (no inline handlers)
++- `js/core/` - constants, utils, UI state (live bindings plus setters), action registry
++- `js/services/` - the data boundary: `index.js` switches per call between `live.js` (Firebase callables) and `demo.js` (local simulation); `firebase.js` is the only file that talks to the Firebase SDK; `adapt.js` maps API documents to screen shapes and escapes server text
++- `js/modules/` - one module per domain (screens + handlers); they only call `svc.*`
++- `firebase.json`, `.firebaserc` - hosting site `samuhia-perks` with security headers and an SPA rewrite (`/join?ref=CODE` works)
++- `tests/smoke.mjs` (demo) and `tests/live.e2e.mjs` (live, runs the real PAY backend handlers)
+ 
+-## Run
+-`npx serve .` then open the printed URL. Tests: `npm i && npm test`.
+-Demo operator: `admin@samuhia.demo` / `Samuhia@2026!`. Demo customer OTP: `123456`.
++## Run and test
++```bash
++npx serve .                      # then open the URL; add ?demo=1 for the demo
++npm i && npm test                # demo smoke test
++PAY_FUNCTIONS=../PAY/functions npm run test:e2e   # live end-to-end (build PAY/functions first)
++```
++Setup, deploy and go-live steps: `docs/LIVE.md`. Production checklist: `docs/LIVE-READINESS.md`.
+diff --git a/docs/LIVE-READINESS.md b/docs/LIVE-READINESS.md
+index 831a6f8..5a8a82a 100644
+--- a/docs/LIVE-READINESS.md
++++ b/docs/LIVE-READINESS.md
+@@ -1,5 +1,7 @@
+ # Live readiness checklist
+ 
++Status: the frontend is wired to the live backend (see docs/LIVE.md). The items below were the original gap list; what remains is operational (console setup, deploys, real-device checks).
++
+ The demo is built to behave like the live app. Rules it already enforces:
+ 
+ - Real ES modules only. No globals, no `window.*` state.
+diff --git a/docs/LIVE.md b/docs/LIVE.md
+new file mode 100644
+index 0000000..269cee4
+--- /dev/null
++++ b/docs/LIVE.md
+@@ -0,0 +1,30 @@
++# Going live: Perks frontend
++
++Prerequisite: the PAY and PMS patches are deployed (`PAY/docs/perks/DEPLOY.md`): functions `perks_op`, `perks_me`, `hpSmsWebhook`, `sendLoginOtp`, `verifyLoginOtp`, Firestore rules and indexes, `HP_WEBHOOK_TOKEN`.
++
++## 1. Firebase console (project plot-9fd6e)
++1. Authentication > Sign-in method: enable **Email/Password**. (Customers use the SMS code, which signs in with a custom token; nothing to enable.)
++2. Authentication > Users: add the shop owner (email + strong password). Copy the user's UID.
++3. Allow that UID as Perks operator: `cd PAY/functions && GOOGLE_CLOUD_PROJECT=plot-9fd6e node scripts/perks-operators.js add <UID>`
++4. Authentication > Settings > Authorized domains: add `perks.samuhia.co.ke`.
++5. Google Cloud Console > APIs & Services > Credentials: restrict the web API key to HTTP referrers `https://perks.samuhia.co.ke/*` and `http://localhost:*`.
++
++## 2. Hosting
++```bash
++firebase hosting:sites:create samuhia-perks --project plot-9fd6e      # once; change the id in firebase.json/.firebaserc if taken
++firebase deploy --only hosting --project plot-9fd6e
++```
++Then Hosting > Add custom domain `perks.samuhia.co.ke` and add the DNS records it shows.
++
++## 3. First checks (use a real phone you control)
++1. Open https://perks.samuhia.co.ke/ : staff sign in with the owner account; you should see all screens.
++2. Record a sale for your own number: the receipt SMS arrives; Firestore `perks_smsLog` row goes `SENT`, then `delivery: DELIVERED` once the Host Pinnacle webhook is configured.
++3. Log out, choose "My rewards", enter the same number: SMS code arrives, dashboard shows the points and the Discover cards.
++4. Open `https://perks.samuhia.co.ke/join?ref=<your code>`: invitation card shows.
++5. Staff > Settings: the draw stays OFF and `runDraw` refuses until legal approval is set in the console.
++
++## Notes and limits
++- Lists load the newest 1000 customers and the last 90 days of sales, ledger and SMS; a customer profile loads that customer's last 50 of each on open. Reports cover the loaded window. Beyond ~1000 customers add paging.
++- The customer OTP accepts any Kenyan mobile network (07x and 01x).
++- Operator pages hold customer phone numbers in memory only; closing the tab or signing out clears them.
++- `?demo=1` is local-only practice data and is clearly badged DEMO.
+diff --git a/firebase.json b/firebase.json
+new file mode 100644
+index 0000000..382fb1b
+--- /dev/null
++++ b/firebase.json
+@@ -0,0 +1,61 @@
++{
++  "hosting": {
++    "site": "samuhia-perks",
++    "public": ".",
++    "ignore": [
++      "firebase.json",
++      "**/.*",
++      "**/node_modules/**",
++      "tests/**",
++      "docs/**",
++      "package.json",
++      "README.md"
++    ],
++    "rewrites": [
++      {
++        "source": "**",
++        "destination": "/index.html"
++      }
++    ],
++    "headers": [
++      {
++        "source": "**",
++        "headers": [
++          {
++            "key": "Content-Security-Policy",
++            "value": "default-src 'none'; script-src 'self' https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.googleapis.com https://*.cloudfunctions.net https://*.run.app https://*.firebaseio.com; frame-src https://plot-9fd6e.firebaseapp.com; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
++          },
++          {
++            "key": "Strict-Transport-Security",
++            "value": "max-age=31536000; includeSubDomains"
++          },
++          {
++            "key": "X-Content-Type-Options",
++            "value": "nosniff"
++          },
++          {
++            "key": "Referrer-Policy",
++            "value": "strict-origin-when-cross-origin"
++          },
++          {
++            "key": "Permissions-Policy",
++            "value": "camera=(), microphone=(), geolocation=(), payment=()"
++          },
++          {
++            "key": "X-Frame-Options",
++            "value": "DENY"
++          }
++        ]
++      },
++      {
++        "source": "**/*.@(js|css|html)",
++        "headers": [
++          {
++            "key": "Cache-Control",
++            "value": "no-cache"
++          }
++        ]
++      }
++    ]
++  }
++}
+diff --git a/index.html b/index.html
+index 606dba1..515accc 100644
+--- a/index.html
++++ b/index.html
+@@ -4,13 +4,13 @@
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+ <meta name="color-scheme" content="light dark">
+-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.google-analytics.com https://*.analytics.google.com; base-uri 'self'; form-action 'self'">
++<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.googleapis.com https://*.cloudfunctions.net https://*.run.app https://*.firebaseio.com; frame-src https://plot-9fd6e.firebaseapp.com; base-uri 'self'; form-action 'self'">
+ <title>Samuhia Perks</title>
+-<link rel="stylesheet" href="css/styles.css">
++<link rel="stylesheet" href="/css/styles.css">
+ </head>
+ <body>
+ <header><div class="logo">★ Samuhia <b>Perks</b><span class="demo">DEMO</span></div><div id="who"></div></header>
+-<main id="app"></main><nav id="nav"></nav><div id="toast"></div>
+-<script type="module" src="js/app.js"></script>
++<main id="app"><p class="mu" style="padding:16px">Loading…</p></main><nav id="nav"></nav><div id="toast"></div>
++<script type="module" src="/js/app.js"></script>
+ </body>
+ </html>
+diff --git a/js/app.js b/js/app.js
+index ec15bd7..ea5f6d0 100644
+--- a/js/app.js
++++ b/js/app.js
+@@ -1,5 +1,11 @@
+ // Entry point. Everything is a real ES module: no globals, no inline handlers.
+-import './app/bootstrap.js';
++// Live by default. Add ?demo=1 to rehearse on local simulated data (clearly badged DEMO, nothing leaves the browser).
++import { boot } from './app/bootstrap.js';
+ import { DEMO_MODE } from './firebase/config.js';
+ 
+-if (!DEMO_MODE) import('./firebase/client.js').then((m) => m.initLive());
++const demo = DEMO_MODE || new URLSearchParams(location.search).get('demo') === '1';
++if (demo) await boot({ live: false });
++else {
++  const { createFirebaseRuntime } = await import('./services/firebase.js');
++  await boot(await createFirebaseRuntime());
++}
+diff --git a/js/app/bootstrap.js b/js/app/bootstrap.js
+index 10fe272..848daad 100644
+--- a/js/app/bootstrap.js
++++ b/js/app/bootstrap.js
+@@ -1,10 +1,31 @@
+-// app/bootstrap
+-import { setS } from '../core/state.js';
+-import { K } from '../core/utils.js';
+-import { seed } from '../modules/data.js';
++// app/bootstrap: pick the runtime (live or demo), restore state, wire events, first render.
+ import { initEvents } from './events.js';
+ import { render } from './shell.js';
++import { setS, view } from '../core/state.js';
++import { K } from '../core/utils.js';
++import { onAuth } from '../modules/auth.js';
++import { seed } from '../modules/data.js';
++import { emptyState } from '../services/live.js';
++import { configureRuntime } from '../services/runtime.js';
++
++function loadDemoState() {
++  try { const s = localStorage.getItem(K); if (s) return JSON.parse(s); } catch (e) { /* fall through to seed */ }
++  return seed();
++}
+ 
+-setS((()=>{try{const s=localStorage.getItem(K);if(s)return JSON.parse(s)}catch(e){}return seed()})());
+-initEvents();
+-render();
++/** rt = { live: false } for the demo, or the object from services/firebase.js (or a test double) for live. */
++export async function boot(rt) {
++  configureRuntime(rt);
++  setS(rt.live ? emptyState() : loadDemoState());
++  const ref = new URLSearchParams(globalThis.location?.search || '').get('ref');
++  if (globalThis.location?.pathname.replace(/\/+$/, '').endsWith('/join') && ref) view.joinRef = ref.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
++  initEvents();
++  if (!rt.live) {
++    document.querySelector('header .logo')?.insertAdjacentHTML('beforeend', '<span class="demo">DEMO</span>');
++    render();
++    return;
++  }
++  view.loading = true;
++  render();
++  rt.auth.onChange(onAuth);
++}
+diff --git a/js/app/events.js b/js/app/events.js
+index 72399c6..e06ddd1 100644
+--- a/js/app/events.js
++++ b/js/app/events.js
+@@ -1,7 +1,7 @@
+-import { getAction } from '../core/actions.js';
+-
+ // One delegated listener per event type. Elements declare data-on-<type>="action" and data-p-<type>='[params]'.
+ // Bubbling is honoured: an action that calls event.stopPropagation() stops the walk.
++import { getAction } from '../core/actions.js';
++
+ function run(type, e) {
+   for (let el = e.target; el && el.nodeType === 1; el = el.parentElement) {
+     const name = el.getAttribute('data-on-' + type);
+diff --git a/js/app/shell.js b/js/app/shell.js
+index 71511d9..cc31617 100644
+--- a/js/app/shell.js
++++ b/js/app/shell.js
+@@ -1,25 +1,26 @@
+ // app/shell
++import { registerActions } from '../core/actions.js';
+ import { S, setDone, setTab, tab, view } from '../core/state.js';
+-import { ensure } from '../modules/data.js';
+-import { $, ap, save } from '../core/utils.js';
+-import { loginUI2 } from '../modules/auth.js';
++import { $, ap } from '../core/utils.js';
++import { loginUI2, logout, unregisteredUI } from '../modules/auth.js';
++import { campUI2 } from '../modules/campaigns.js';
+ import { custUI2 } from '../modules/customer-app.js';
+-import { overUI2, repUI2 } from '../modules/reports.js';
+-import { saleUI, txUI2 } from '../modules/transactions.js';
+ import { custList2 } from '../modules/customers.js';
++import { ensure } from '../modules/data.js';
+ import { redeem3 } from '../modules/redemptions.js';
+-import { campUI2 } from '../modules/campaigns.js';
+-import { cc, sms3, tp, tplUI2 } from '../modules/sms.js';
+-import { set3 } from '../modules/settings.js';
+ import { refUI } from '../modules/referrals.js';
++import { overUI2, repUI2 } from '../modules/reports.js';
++import { set3 } from '../modules/settings.js';
++import { cc, sms3, tp, tplUI2 } from '../modules/sms.js';
++import { saleUI, txUI2 } from '../modules/transactions.js';
+ import { vouchUI2 } from '../modules/vouchers.js';
+-import { registerActions } from '../core/actions.js';
++import { isLive } from '../services/runtime.js';
+ 
+ export function go(t){setTab(t);setDone(null);render()}
+ 
+-export function render(){ensure();document.body.classList.toggle('op',!!(S.user&&S.user.role=='op'));const u=S.user;$('#who').innerHTML=u?`<button class="s" data-on-click="app_shell_1">Log out</button>`:'';
++export function render(){if(!isLive())ensure();document.body.classList.toggle('op',!!(S.user&&S.user.role=='op'));const u=S.user;$('#who').innerHTML=u?`<button class="s" data-on-click="app_shell_1">Log out</button>`:'';
+  if(!u){$('#nav').innerHTML='';$('#app').innerHTML=loginUI2();return}
+- if(u.role=='cust'){$('#nav').innerHTML='';$('#app').innerHTML=custUI2();return}
++ if(u.role=='cust'){$('#nav').innerHTML='';$('#app').innerHTML=u.unregistered?unregisteredUI():custUI2();return}
+  const T=[['over','Overview','⌂',1],['sale','New Sale','＋',3],['cust','Customers','☺',2],['txn','Transactions','☰'],['redeem','Redemptions','⇄',4],['refs','Referrals','⚭'],['vouch','Vouchers','🎟'],['camp','Campaigns','📣'],['sms','SMS Centre','✉'],['tpl','Templates','✎'],['rep','Reports','▤'],['set','Settings','⚙'],['more','More','⋯',5]];
+  $('#nav').innerHTML=T.map(t=>`<a class="${t[0]==tab?'on ':''}${t[0]=='sale'?'sale ':''}${t[3]?'':'dk '}${t[0]=='more'?'mo':''}" style="--o:${t[3]||9}" data-on-click="app_shell_2" ${ap([t[0]],'click')} role="button" tabindex="0"><i>${t[2]}</i>${t[1]}</a>`).join('');
+  $('#app').innerHTML=({over:overUI2,sale:saleUI,cust:custList2,redeem:redeem3,camp:campUI2,sms:sms3,set:set3,txn:txUI2,refs:refUI,vouch:vouchUI2,tpl:tplUI2,rep:repUI2,more:moreUI})[tab]();$('#app').className=u.role=='op'?tab:'';if(tab=='tpl'){tp();cc()}}
+@@ -29,7 +30,7 @@ export function moreUI(){return`<h2>More</h2><div class="grid">${[['txn','Transa
+ export function ask(msg,fn,inp){const o=document.createElement('div');o.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:30;display:flex;align-items:center;justify-content:center;padding:16px';o.innerHTML=`<div class="card" style="max-width:380px;width:100%;margin:0"><p><b>${msg}</b></p>${inp?'<input id="mi">':''}<div class="row"><button class="s" id="mn">Cancel</button><button id="my">Confirm</button></div></div>`;document.body.appendChild(o);const x=()=>o.remove();o.querySelector('#mn').onclick=()=>{view.dc=0;x()};o.querySelector('#my').onclick=()=>{const v=inp?o.querySelector('#mi').value:null;x();fn(v)};if(inp)o.querySelector('#mi').focus()}
+ 
+ registerActions({
+-app_shell_1(p,event){S.user=null;save();render()},
++async app_shell_1(p,event){await logout()},
+ app_shell_2(p,event){go(p[0])},
+ app_shell_3(p,event){go(p[0])}
+ });
+diff --git a/js/core/actions.js b/js/core/actions.js
+index a206e6c..6f58102 100644
+--- a/js/core/actions.js
++++ b/js/core/actions.js
+@@ -1,4 +1,5 @@
+ // Registry for delegated UI actions (replaces inline onclick/oninput/onchange).
++
+ const reg = new Map();
+ export const registerActions = (o) => { for (const [k, f] of Object.entries(o)) reg.set(k, f); };
+ export const getAction = (k) => reg.get(k);
+diff --git a/js/core/state.js b/js/core/state.js
+index d770f86..f493c48 100644
+--- a/js/core/state.js
++++ b/js/core/state.js
+@@ -1,7 +1,11 @@
+ // Single source of UI state. Imported bindings are live; reassign only through the setters.
++
+ export let S;
+ export let tab = 'sale';
+-export const newDraft = () => ({ phone: '', items: [{ name: 'Printing', price: '' }], ne: '', ref: '' });
++import { newKey } from '../services/api.js';
++
++// key = idempotency key for this draft; regenerated whenever the draft is edited (see modules/transactions.js).
++export const newDraft = () => ({ phone: '', items: [{ name: 'Printing', price: '' }], ne: '', ref: '', key: newKey() });
+ export let D = newDraft();
+ export let done = null;
+ export let lock = false;
+diff --git a/js/core/utils.js b/js/core/utils.js
+index 5dfd14c..bdcf03b 100644
+--- a/js/core/utils.js
++++ b/js/core/utils.js
+@@ -1,5 +1,6 @@
+ // core/utils
+ import { S } from './state.js';
++import { isLive } from '../services/runtime.js';
+ 
+ export const K='sperks_v1';
+ 
+@@ -11,11 +12,12 @@ export const now=()=>new Date().toISOString();
+ 
+ export function norm(p){p=String(p).replace(/[\s-]/g,'');if(/^\+254[17]\d{8}$/.test(p))return p;if(/^254[17]\d{8}$/.test(p))return'+'+p;if(/^0[17]\d{8}$/.test(p))return'+254'+p.slice(1);return null}
+ 
+-export const save=()=>{try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}};
++// Live data (customers, sales, phone numbers) is never written to the browser: only the demo persists locally.
++export const save=()=>{if(isLive())return;try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}};
+ 
+ export function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',2400)}
+ 
+-export const bd=s=>`<span class="pill ${/FAIL|VOID|REVERS|REJECT/.test(s)?'f':''}">${s}</span>`;
++export const bd=s=>`<span class="pill ${/FAIL|VOID|REVERS|REJECT|UNDELIV|EXPIRED/.test(s)?'f':''}">${s}</span>`;
+ 
+ export const nmc=id=>(S.cs.find(c=>c.id==id)||{}).phone;
+ 
+diff --git a/js/firebase/client.js b/js/firebase/client.js
+deleted file mode 100644
+index ab10362..0000000
+--- a/js/firebase/client.js
++++ /dev/null
+@@ -1,15 +0,0 @@
+-// Live-mode Firebase client, loaded only when DEMO_MODE is false. No build step: SDK comes from the CDN.
+-import { firebaseConfig } from './config.js';
+-
+-const V = '10.14.1';
+-let app;
+-
+-export async function initLive() {
+-  const { initializeApp } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-app.js`);
+-  app = initializeApp(firebaseConfig);
+-  const { getAnalytics, isSupported } = await import(`https://www.gstatic.com/firebasejs/${V}/firebase-analytics.js`);
+-  if (await isSupported()) getAnalytics(app);
+-  return app;
+-}
+-
+-export const getApp = () => app;
+diff --git a/js/firebase/config.js b/js/firebase/config.js
+index 6ad2948..3e738f9 100644
+--- a/js/firebase/config.js
++++ b/js/firebase/config.js
+@@ -1,6 +1,7 @@
+ // Public Firebase web config (identifiers, not secrets). Restrict the API key by HTTP referrer
+-// and enforce App Check and Firestore Rules before turning DEMO_MODE off.
+-export const DEMO_MODE = true;
++// (perks.samuhia.co.ke, localhost) in Google Cloud Console > APIs & Services > Credentials.
++// false = live app; add ?demo=1 to the URL for the local demo.
++export const DEMO_MODE = false;
+ 
+ export const firebaseConfig = {
+   apiKey: 'AIzaSyDuEPDV2wpBtgfSW6L4v05PVUxeaFkW3k0',
+diff --git a/js/modules/auth.js b/js/modules/auth.js
+index c7de7a3..94ffd33 100644
+--- a/js/modules/auth.js
++++ b/js/modules/auth.js
+@@ -1,22 +1,79 @@
+-// modules/auth
+-import { S, view } from '../core/state.js';
+-import { $, ap, norm, now, save, toast } from '../core/utils.js';
++// modules/auth: demo logins (simulated) and live logins (Firebase email/password for staff, SMS code for customers).
+ import { render } from '../app/shell.js';
+ import { registerActions } from '../core/actions.js';
++import { S, setS, view } from '../core/state.js';
++import { $, esc, norm, now, save, toast } from '../core/utils.js';
++import { errText } from '../services/api.js';
++import { emptyState } from '../services/live.js';
++import { isLive, runtime } from '../services/runtime.js';
+ 
+-export function loginUI(){return`<div class="card"><h2>Operator login</h2><label>Username</label><input id="u" value="admin@samuhia.demo"><label>Password</label><input id="p" type="password" value="Samuhia@2026!"><button class="big" data-on-click="modules_auth_2">Sign in</button><p class="mu">Demo environment. These credentials are for the demo only.</p></div>
+-<div class="card"><h2>Customer demo (simulated OTP)</h2>${S.cs.slice(0,4).map(c=>`<button class="s" style="width:100%;margin-bottom:8px" data-on-click="modules_auth_1" ${ap([c.id],'click')}>${c.phone} — send demo OTP</button>`).join('')}<p class="mu">Real access will use Firebase Phone Authentication. Demo OTP: 123456, auto-filled.</p></div>`}
++const joinCard = () => (view.joinRef ? `<div class="card"><h2>You’re invited to Samuhia Perks</h2><p>Visit Samuhia Cyber and give the code <b>${esc(view.joinRef)}</b> on your first purchase above KES 50. You get 30 points and your friend gets 50.</p></div>` : '');
++const errCard = () => (view.authError ? `<div class="card"><span class="err">${esc(view.authError)}</span></div>` : '');
+ 
+-export function opLogin(){if($('#u').value=='admin@samuhia.demo'&&$('#p').value=='Samuhia@2026!'){S.user={role:'op'};save();render()}else toast('Invalid credentials')}
++// ───────── demo ─────────
++function demoLoginUI() {
++  return `<div class="card"><h2>Operator login</h2><label>Username</label><input id="u" value="admin@samuhia.demo"><label>Password</label><input id="p" type="password" value="Samuhia@2026!"><button class="big" data-on-click="auth_demoOperator">Sign in</button><p class="mu">Demo environment. These credentials are for the demo only.</p></div>
++<div class="card"><h2>Customer demo (simulated OTP)</h2>${S.cs.slice(0, 4).map((c) => `<button class="s" style="width:100%;margin-bottom:8px" data-on-click="auth_demoOtp" data-p-click="${esc(JSON.stringify([c.id]))}">${c.phone} — send demo OTP</button>`).join('')}<p class="mu">Live access uses a real SMS code. Demo code: 123456, auto-filled.</p></div>
++<div class="card"><h3>Or enter your phone</h3><input id="cp" inputmode="tel" placeholder="07XX XXX XXX"><button class="s big" data-on-click="auth_demoPhone">Send OTP</button></div>`;
++}
++function demoOtpUI() {
++  const c = S.cs.find((x) => x.id === view.otp);
++  return `<div class="card"><h2>Verify ${esc(c.phone)}</h2><div class="ok">DEMO ONLY: your code is 123456. No SMS is sent.</div><input id="ot" inputmode="numeric" value="123456"><button class="big" data-on-click="auth_demoVerify" data-p-click="${esc(JSON.stringify([c.id]))}">Verify</button><button class="s big" style="margin-top:8px" data-on-click="auth_back">Back</button></div>`;
++}
++function demoOtpStart(id) {
++  const c = S.cs.find((x) => x.id === id);
++  S.sms.push({ id: 'm' + S.sms.length, phone: c.phone, type: 'otp', camp: null, msg: 'Samuhia Perks code: 123456. Do not share it.', st: 'SENT', cost: S.cfg.sms, at: now() });
++  view.otp = id; save(); render();
++}
+ 
+-export function custLogin(id){const c=S.cs.find(x=>x.id==id);S.sms.push({id:'m'+S.sms.length,phone:c.phone,type:'otp',camp:null,msg:'Samuhia Perks code: 123456. Do not share it.',st:'SENT',cost:S.cfg.sms,at:now()});view.otp=id;save();render()}
++// ───────── live ─────────
++function liveLoginUI() {
++  if (view.loading) return '<div class="card"><p class="mu">Loading…</p></div>';
++  if (view.otpPhone) {
++    return `${joinCard()}<div class="card"><h2>Enter your code</h2><p class="mu">We sent a 6-digit code to ${esc(view.otpPhone)}.</p><input id="lc" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456"><button class="big" data-on-click="auth_liveVerify">Verify</button><button class="s big" style="margin-top:8px" data-on-click="auth_back">Use a different number</button></div>${errCard()}`;
++  }
++  return `${joinCard()}<div class="card"><h2>My rewards</h2><label>Phone number</label><input id="lp" inputmode="tel" autocomplete="tel" placeholder="07XX XXX XXX"><button class="big" data-on-click="auth_liveSend">Send code</button><p class="mu">We text you a 6-digit code. Points are redeemed in person at Samuhia Cyber.</p></div>
++<div class="card"><h3>Samuhia Cyber staff</h3><label>Email</label><input id="em" type="email" autocomplete="username"><label>Password</label><input id="pw" type="password" autocomplete="current-password"><button class="s big" data-on-click="auth_liveStaff">Staff sign in</button></div>${errCard()}`;
++}
++export const unregisteredUI = () => `<div class="card"><h2>No Perks account yet</h2><p>Your number ${esc(S.user.phone || '')} is verified. Visit Samuhia Cyber and give this number at your next purchase to start earning points.</p><p class="mu">Have a friend’s referral code? Show it to the operator on your first purchase above KES 50.</p></div>`;
+ 
+-export function loginUI2(){if(!view.otp)return loginUI()+`<div class="card"><h3>Or enter your phone</h3><input id="cp" inputmode="tel" placeholder="07XX XXX XXX"><button class="s big" data-on-click="modules_auth_3">Send OTP</button></div>`;const c=S.cs.find(x=>x.id==view.otp);return`<div class="card"><h2>Verify ${c.phone}</h2><div class="ok">DEMO ONLY: your code is 123456. No SMS is sent. Production uses Firebase Phone Authentication.</div><input id="ot" inputmode="numeric" value="123456"><button class="big" data-on-click="modules_auth_4" ${ap([c.id],'click')}>Verify</button><button class="s big" style="margin-top:8px" data-on-click="modules_auth_5">Back</button></div>`}
++export const loginUI2 = () => (isLive() ? liveLoginUI() : view.otp ? demoOtpUI() : demoLoginUI());
+ 
++/** Auth state from Firebase (live only): routes a signed-in user to the staff or customer screens. */
++export async function onAuth(user) {
++  const { live, loadCustomerSession } = await import('../services/live.js');
++  view.loading = false;
++  if (!user) { setS(emptyState()); view.otpPhone = null; render(); return; }
++  view.loading = true; render();
++  try {
++    if (user.phone) await loadCustomerSession(user);
++    else {
++      await live.refresh();
++      S.user = { role: 'op', uid: user.uid, email: user.email };
++    }
++    view.authError = '';
++  } catch (e) {
++    view.authError = e.code === 'permission-denied' ? 'This account is not allowed to use the Perks operator screens.' : errText(e);
++    view.loading = false;
++    await runtime.auth.signOut();
++    return;
++  }
++  view.loading = false; render();
++}
++
++export async function logout() {
++  if (isLive()) { await runtime.auth.signOut(); return; }
++  S.user = null; save(); render();
++}
++
++const busy = async (fn) => { try { await fn(); } catch (e) { view.authError = ''; toast(errText(e)); } };
+ registerActions({
+-modules_auth_1(p,event){custLogin(p[0])},
+-modules_auth_2(p,event){opLogin()},
+-modules_auth_3(p,event){const c=S.cs.find(x=>x.phone==norm($('#cp').value));c?custLogin(c.id):toast('Number not registered')},
+-modules_auth_4(p,event){if($('#ot').value=='123456'){S.user={role:'cust',id:p[0]};view.otp=null;save();render()}else toast('Wrong code')},
+-modules_auth_5(p,event){view.otp=null;render()}
++  auth_demoOperator() { if ($('#u').value === 'admin@samuhia.demo' && $('#p').value === 'Samuhia@2026!') { S.user = { role: 'op' }; save(); render(); } else toast('Invalid credentials'); },
++  auth_demoOtp(p) { demoOtpStart(p[0]); },
++  auth_demoPhone() { const c = S.cs.find((x) => x.phone === norm($('#cp').value)); c ? demoOtpStart(c.id) : toast('Number not registered'); },
++  auth_demoVerify(p) { if ($('#ot').value === '123456') { S.user = { role: 'cust', id: p[0] }; view.otp = null; save(); render(); } else toast('Wrong code'); },
++  auth_back() { view.otp = null; view.otpPhone = null; view.authError = ''; render(); },
++  auth_liveSend() { return busy(async () => { const ph = norm($('#lp').value); if (!ph) return toast('Enter a valid Kenyan number'); await runtime.auth.sendOtp(ph); view.otpPhone = ph; view.authError = ''; render(); }); },
++  auth_liveVerify() { return busy(async () => { const code = ($('#lc').value || '').replace(/\D/g, ''); if (code.length !== 6) return toast('Enter the 6-digit code'); await runtime.auth.verifyOtp(view.otpPhone, code); }); },
++  auth_liveStaff() { return busy(async () => { const em = $('#em').value.trim(), pw = $('#pw').value; if (!em || !pw) return toast('Enter email and password'); await runtime.auth.signInOperator(em, pw); }); },
+ });
+diff --git a/js/modules/campaigns.js b/js/modules/campaigns.js
+index 7cd8cb0..0f9ed81 100644
+--- a/js/modules/campaigns.js
++++ b/js/modules/campaigns.js
+@@ -1,21 +1,24 @@
+ // modules/campaigns
+-import { S, view } from '../core/state.js';
+-import { $, ap, bd, save, toast } from '../core/utils.js';
+ import { render } from '../app/shell.js';
+ import { registerActions } from '../core/actions.js';
++import { S, view } from '../core/state.js';
++import { $, ap, bd, toast } from '../core/utils.js';
++import { errText } from '../services/api.js';
++import { svc } from '../services/index.js';
++import { OPT_OUT, fillTemplate } from '../services/templates.js';
+ 
+-export function pv(k){return S.tpl.sale.replace(/{(\w+)}/g,(m,x)=>({amount:600,pts:36,bal:255,val:51})[x]??m)+' '+k.ad+' '+(k.url||'https://perks.samuhia.co.ke')+' Opt out: perks.samuhia.co.ke'}
++export function pv(k){return fillTemplate(S.tpl.sale||'')+' '+k.ad+' '+(k.url||'https://perks.samuhia.co.ke')+' '+OPT_OUT}
+ 
+ export function campUI2(){const e=S.camps.find(k=>k.id==view.ek)||{},fi=(id,l,v,t)=>`<div><label>${l}</label><input id="${id}" type="${t||'text'}" value="${(v||'').toString().replace(/"/g,'&quot;')}"></div>`;
+ return`<h2>Campaigns</h2><div class="split rv"><div class="card"><h3>${e.id?'Edit':'New'} campaign</h3>${fi('cn','Name',e.name)}<label>Advertisement</label><textarea id="ca" rows="3">${e.ad||''}</textarea>${fi('cu','Destination link',e.url||'https://perks.samuhia.co.ke')}${fi('cm','Product or service promoted',e.promo)}<div class="row">${fi('cs','Start',e.start,'date')}${fi('ce','End',e.end,'date')}</div>${fi('cp','Priority',e.pr||1,'number')}<button class="big" data-on-click="modules_campaigns_4">Save campaign</button>${e.id?'<button class="s big" style="margin-top:8px" data-on-click="campaigns_cancel_edit" role="button">Cancel edit</button>':''}</div><div class="cg">${S.camps.slice().sort((a,b)=>(b.pr||0)-(a.pr||0)).map(k=>`<div class="card"><div class="li"><b>${k.name}</b>${S.act==k.id?'<span class="pill">ACTIVE</span>':k.on?'<span class="pill">READY</span>':bd('PAUSED')}</div><p class="mu">${k.ad}<br>${k.url||'https://perks.samuhia.co.ke'}<br>Priority ${k.pr||1}${k.start?' · from '+k.start:''}${k.end?' · to '+k.end:''}${k.promo?' · promotes '+k.promo:''}</p><p style="font-size:13px"><b>SMS preview:</b> ${pv(k)}</p><div class="row">${k.on?`<button data-on-click="modules_campaigns_1" ${ap([k.id],'click')}>${S.act==k.id?'Selected':'Make active'}</button>`:''}<button class="s" data-on-click="modules_campaigns_2" ${ap([k.id],'click')}>${k.on?'Pause':'Resume'}</button><button class="s" data-on-click="modules_campaigns_3" ${ap([k.id],'click')}>Edit</button></div></div>`).join('')}</div></div>`}
+ 
+-export function tgC(id){const k=S.camps.find(x=>x.id==id);k.on=!k.on;if(!k.on&&S.act==id)S.act='';save();render()}
++export async function tgC(id){try{await svc.toggleCampaign(id)}catch(e){toast(errText(e))}render()}
+ 
+-export function saveCamp(){const g=i=>$('#'+i).value.trim();if(!g('cn')||!g('ca'))return toast('Name and advertisement required');let k=S.camps.find(x=>x.id==view.ek);if(!k){k={id:'k'+Date.now(),on:true};S.camps.push(k)}Object.assign(k,{name:g('cn'),ad:g('ca'),url:g('cu'),promo:g('cm'),start:g('cs'),end:g('ce'),pr:+g('cp')||1});view.ek=null;save();toast('Campaign saved');render()}
++export async function saveCamp(){const g=i=>$('#'+i).value.trim();if(!g('cn')||!g('ca'))return toast('Name and advertisement required');try{await svc.saveCampaign({id:view.ek,name:g('cn'),ad:g('ca'),url:g('cu'),promo:g('cm'),start:g('cs'),end:g('ce'),pr:+g('cp')||1});view.ek=null;toast('Campaign saved')}catch(e){toast(errText(e))}render()}
+ 
+ registerActions({
+ campaigns_cancel_edit(p,event){view.ek=null;render()},
+-modules_campaigns_1(p,event){S.act=p[0];save();render()},
++async modules_campaigns_1(p,event){try{await svc.setActiveCampaign(p[0])}catch(e){toast(errText(e))}render()},
+ modules_campaigns_2(p,event){tgC(p[0])},
+ modules_campaigns_3(p,event){view.ek=p[0];render();scrollTo(0,0)},
+ modules_campaigns_4(p,event){saveCamp()}
+diff --git a/js/modules/customer-app.js b/js/modules/customer-app.js
+index 178d8ba..00dc1d2 100644
+--- a/js/modules/customer-app.js
++++ b/js/modules/customer-app.js
+@@ -1,13 +1,15 @@
+ // modules/customer-app
++import { render } from '../app/shell.js';
++import { registerActions } from '../core/actions.js';
++import { DISC } from '../core/constants.js';
+ import { S, view } from '../core/state.js';
++import { ap, bd, money, toast } from '../core/utils.js';
+ import { bal } from './points.js';
+-import { ap, bd, money, now, save, toast } from '../core/utils.js';
+-import { DISC } from '../core/constants.js';
+-import { registerActions } from '../core/actions.js';
+-import { render } from '../app/shell.js';
++import { errText } from '../services/api.js';
++import { svc } from '../services/index.js';
+ 
+ export function custUI2(){const c=S.cs.find(x=>x.id==S.user.id),b=bal(S,c.id),link='https://perks.samuhia.co.ke/join?ref='+c.code,rs=S.refs.filter(r=>r.from==c.id),mine=S.tx.filter(t=>t.c==c.id),earned=S.led.filter(l=>l.c==c.id&&l.pts>0).reduce((a,l)=>a+l.pts,0),red=-S.led.filter(l=>l.c==c.id&&l.type=='REDEEM').reduce((a,l)=>a+l.pts,0);
+-return`<div class="pts"><span>Your loyalty rewards · ${c.phone}</span><b>${b} points</b>KES ${b/5} value<div class="row" style="margin-top:10px;font-size:13px"><span>Spent ${money(mine.filter(t=>t.status=='COMPLETED').reduce((a,t)=>a+t.elig,0))}</span><span>Earned ${earned}</span><span>Redeemed ${red}</span><span>Referrals ${rs.filter(r=>r.st=='REWARDED').length}</span></div></div>
++return`<div class="pts"><span>Your loyalty rewards · ${c.phone}</span><b>${b} points</b>KES ${b/5} value<div class="row" style="margin-top:10px;font-size:13px"><span>Spent ${money(c.spend??mine.filter(t=>t.status=='COMPLETED').reduce((a,t)=>a+t.elig,0))}</span><span>Earned ${earned}</span><span>Redeemed ${red}</span><span>Referrals ${rs.filter(r=>r.st=='REWARDED').length}</span></div></div>
+ <h2 style="margin-top:22px">Discover Samuhia</h2><div class="disc">${DISC.map((d,i)=>`<a class="dc${i?'':' big1'}" style="background:linear-gradient(135deg,${d[3].split(',')[0]},${d[3].split(',')[1]})" href="${d[2]}" target="_blank" rel="noopener"><i>${d[4]}</i><b>${d[0]}</b><span>${d[1]}</span><em>Learn more →</em></a>`).join('')}</div>
+ <div class="two"><div><div class="card"><h3>Refer a friend</h3><p><b>${c.code}</b><br><span class="mu">${link}</span></p><div class="row"><button data-on-click="modules_customer_app_2" ${ap([link],'click')}>Copy link</button><button class="s" data-on-click="modules_customer_app_3" ${ap([link],'click')}>Share</button></div><p class="mu">When someone you invite spends above KES 50, you get 50 points and they get 30. ${rs.filter(r=>r.st=='REWARDED').length} rewarded · ${rs.filter(r=>r.st=='PENDING').length} pending.</p></div>
+ <div class="card"><h3>My vouchers</h3>${S.vo.filter(v=>v.c==c.id).map(v=>`<div class="li"><span>${v.code}<br><span class="mu">${v.type} ${v.val}</span></span>${bd(v.st)}</div>`).join('')||'<p class="mu">No vouchers yet.</p>'}<p class="mu">To redeem points, visit Samuhia Cyber. Our operator will apply your rewards.</p></div>
+@@ -18,5 +20,5 @@ registerActions({
+ modules_customer_app_1(p,event){view.ct=view.ct==p[0]?null:p[1];render()},
+ modules_customer_app_2(p,event){navigator.clipboard&&navigator.clipboard.writeText(p[0]).then(()=>toast('Link copied'),()=>toast('Copy failed'))},
+ modules_customer_app_3(p,event){navigator.share?navigator.share({title:'Samuhia Perks',url:p[0]}).catch(()=>{}):toast('Sharing unavailable, copy the link')},
+-modules_customer_app_4(p,event){const x=S.cs.find(y=>y.id==p[0]);x.mkt=!x.mkt;S.audit.push({at:now(),a:'CONSENT '+x.phone+' '+x.mkt});save();render()}
++async modules_customer_app_4(p,event){try{await svc.setMarketing(!S.cs.find(y=>y.id==p[0]).mkt)}catch(e){toast(errText(e))}render()}
+ });
+diff --git a/js/modules/customers.js b/js/modules/customers.js
+index 8e8cb29..4cff9b5 100644
+--- a/js/modules/customers.js
++++ b/js/modules/customers.js
+@@ -1,25 +1,26 @@
+ // modules/customers
+-import { S, view } from '../core/state.js';
+-import { ap, bd, fx, money, nmc, norm, now, save, toast } from '../core/utils.js';
+-import { bal } from './points.js';
+ import { ask, render } from '../app/shell.js';
+-import { sendSms } from './sms.js';
+ import { registerActions } from '../core/actions.js';
++import { S, view } from '../core/state.js';
++import { ap, bd, fx, money, nmc, norm, toast } from '../core/utils.js';
++import { bal } from './points.js';
++import { errText } from '../services/api.js';
++import { svc } from '../services/index.js';
+ 
+-export function custList2(){const q=view.q||'',C=S.cs.filter(c=>c.phone.includes(fx(q))),sp=c=>S.tx.filter(t=>t.c==c.id&&t.status=='COMPLETED').reduce((a,t)=>a+t.elig,0),n=c=>S.tx.filter(t=>t.c==c.id).length,sel=view.c?S.cs.find(x=>x.id==view.c):null;
++export function custList2(){const q=view.q||'',C=S.cs.filter(c=>c.phone.includes(fx(q))),sp=c=>c.spend??S.tx.filter(t=>t.c==c.id&&t.status=='COMPLETED').reduce((a,t)=>a+t.elig,0),n=c=>c.txCount??S.tx.filter(t=>t.c==c.id).length,sel=view.c?S.cs.find(x=>x.id==view.c):null;
+ return`<h2>Customers</h2><div class="bar"><input placeholder="Search phone" value="${q}" data-on-change="modules_customers_4"><button data-on-click="modules_customers_5">+ Add customer</button></div><div class="split${sel?' sel':''}"><div><table class="tb"><thead><tr><th>Phone<th>Points<th>Value<th>Lifetime spend<th>Sales<th>Code<th>Registered<th>Marketing</tr></thead>${C.map(c=>`<tr class="cr" data-on-click="modules_customers_1" ${ap([c.id],'click')} role="button" tabindex="0"><td><b>${c.phone}</b><td>${bal(S,c.id)}<td>${money(bal(S,c.id)/5)}<td>${money(sp(c))}<td>${n(c)}<td>${c.code}<td>${new Date(c.created).toLocaleDateString('en-KE')}<td>${c.mkt?'Yes':'No'}`).join('')}</table><div class="mv">${C.map(c=>`<div class="card" data-on-click="modules_customers_2" ${ap([c.id],'click')} role="button" tabindex="0"><div class="li"><b>${c.phone}</b><b>${bal(S,c.id)} pts</b></div><span class="mu">${money(bal(S,c.id)/5)} · spend ${money(sp(c))} · ${n(c)} sales · ${c.code} · marketing ${c.mkt?'yes':'no'}</span></div>`).join('')}</div></div><div>${sel?`<button class="s mv" data-on-click="modules_customers_3">← Back</button>`+prof2(sel):'<p class="mu">Select a customer to see their profile.</p>'}</div></div>`}
+ 
+ export function addCust(){ask('Customer phone',v=>addC2(v),1)}
+ 
+-export function addC2(v){const p=norm(v||'');if(!p)return toast('Invalid phone');if(S.cs.some(c=>c.phone==p))return toast('Already exists');const c={id:'c'+(S.cs.length+1),phone:p,code:Math.random().toString(36).slice(2,8).toUpperCase(),mkt:false,by:null,created:now()};S.cs.push(c);sendSms(S,c,'welcome',{code:c.code});view.c=c.id;save();render()}
++export async function addC2(v){const p=norm(v||'');if(!p)return toast('Invalid phone');try{const id=await svc.addCustomer(p);view.c=id;toast('Customer ready')}catch(e){toast(errText(e))}render()}
+ 
+-export function c_t(id){const x=S.cs.find(y=>y.id==id);x.mkt=!x.mkt;S.audit.push({at:now(),a:'CONSENT '+x.phone+' '+x.mkt});save();render()}
++export async function c_t(id){const c=S.cs.find(y=>y.id==id);if(!c)return;try{await svc.setConsent({customer:c,value:!c.mkt})}catch(e){toast(errText(e))}render()}
+ 
+ export function prof2(c){const L2=(t,rows)=>`<div class="card"><h3>${t}</h3>${rows.join('')||'<span class="mu">None</span>'}</div>`;return`<div class="pts"><b>${bal(S,c.id)} pts</b>${money(bal(S,c.id)/5)} · ${c.phone} · code ${c.code}</div><div class="card" style="margin-top:12px"><div class="li"><span>Marketing consent</span><button class="s" data-on-click="modules_customers_6" ${ap([c.id],'click')}>${c.mkt?'Opted in':'Opted out'}</button></div></div>${L2('Transactions',S.tx.filter(t=>t.c==c.id).slice(-6).reverse().map(t=>`<div class="li"><span>${t.id} ${t.items.map(i=>i.name).join(', ')}</span><span>${money(t.total)} ${bd(t.status)}</span></div>`))}${L2('Points ledger',S.led.filter(l=>l.c==c.id).slice(-8).reverse().map(l=>`<div class="li"><span>${l.desc}<br><span class="mu">${l.type}</span></span><span>${l.pts>0?'+':''}${l.pts} → ${l.after}</span></div>`))}${L2('Vouchers and referrals',[...S.vo.filter(v=>v.c==c.id).map(v=>`<div class="li"><span>${v.code}</span>${bd(v.st)}</div>`),...S.refs.filter(r=>r.from==c.id||r.to==c.id).map(r=>`<div class="li"><span>${nmc(r.from)} → ${nmc(r.to)}</span>${bd(r.st)}</div>`)])}${L2('SMS history',S.sms.filter(m=>m.phone==c.phone).slice(-5).reverse().map(m=>`<div class="li"><span>${m.msg.slice(0,80)}…</span>${bd(m.st)}</div>`))}`}
+ 
+ registerActions({
+-modules_customers_1(p,event){view.c=p[0];render()},
+-modules_customers_2(p,event){view.c=p[0];render()},
++async modules_customers_1(p,event){view.c=p[0];render();try{await svc.openCustomer(p[0]);render()}catch(e){toast(errText(e))}},
++async modules_customers_2(p,event){view.c=p[0];render();try{await svc.openCustomer(p[0]);render()}catch(e){toast(errText(e))}},
+ modules_customers_3(p,event){view.c=null;render()},
+ modules_customers_4(p,event){view.q=this.value;render()},
+ modules_customers_5(p,event){addCust()},
+diff --git a/js/modules/data.js b/js/modules/data.js
+index 9afe594..6862f9c 100644
+--- a/js/modules/data.js
++++ b/js/modules/data.js
+@@ -1,8 +1,8 @@
+ // modules/data
+-import { post } from './transactions.js';
++import { TPL } from '../core/constants.js';
+ import { S } from '../core/state.js';
+ import { now } from '../core/utils.js';
+-import { TPL } from '../core/constants.js';
++import { post } from './transactions.js';
+ 
+ export function seed(){const d=n=>new Date(Date.now()-n*864e5).toISOString();
+  const cs=[['+254712345678','AMANI7',1],['+254723456789','WANJI4',1],['+254734567890','KIPRO2',0],['+254745678901','NEEMA9',1]].map((c,i)=>({id:'c'+(i+1),phone:c[0],code:c[1],mkt:!!c[2],by:null,created:d(6-i)}));
+diff --git a/js/modules/points.js b/js/modules/points.js
+index 513ee7d..4f315d0 100644
+--- a/js/modules/points.js
++++ b/js/modules/points.js
+@@ -6,6 +6,6 @@ export function itemType(n){return CAT.PRODUCT.includes(n)?'PRODUCT':'SERVICE'}
+ 
+ export function calc(S,items){return items.map(i=>{const t=itemType(i.name),r=t=='SERVICE'?S.cfg.sv:S.cfg.pr;return{...i,type:t,rate:r,pts:Math.floor(i.price*r/100)}})}
+ 
+-export const bal=(S,id)=>S.led.filter(l=>l.c==id).reduce((a,l)=>a+l.pts,0);
++export const bal=(S,id)=>{const c=S.cs.find(x=>x.id==id);return c&&typeof c.points==='number'?c.points:S.led.filter(l=>l.c==id).reduce((a,l)=>a+l.pts,0)};
+ 
+ export function L(S,c,type,pts,desc,at){S.led.push({id:'l'+S.led.length,c,type,pts,after:bal(S,c)+pts,desc,at:at||now()})}
+diff --git a/js/modules/redemptions.js b/js/modules/redemptions.js
+index 0979c8a..a7567fe 100644
+--- a/js/modules/redemptions.js
++++ b/js/modules/redemptions.js
+@@ -1,18 +1,23 @@
+ // modules/redemptions
+-import { $, ap, dt, money, nmc, norm, save, toast } from '../core/utils.js';
+-import { S, view } from '../core/state.js';
+-import { L, bal } from './points.js';
+ import { ask, render } from '../app/shell.js';
+-import { sendSms } from './sms.js';
+ import { registerActions } from '../core/actions.js';
++import { S, view } from '../core/state.js';
++import { $, ap, dt, money, nmc, norm, toast } from '../core/utils.js';
++import { bal } from './points.js';
++import { errText, newKey } from '../services/api.js';
++import { svc } from '../services/index.js';
+ 
+ export function redeemUI(){const ph=norm(view.rp||''),c=ph&&S.cs.find(x=>x.phone==ph),p=Math.floor(+view.pts||0);
+  return`<h2>Redeem points</h2><div class="card"><label>Customer phone</label><input inputmode="tel" value="${view.rp||''}" data-on-input="modules_redemptions_1"><div id="rd"></div></div>`}
+ 
+ export function rr(){const ph=norm(view.rp||''),c=ph&&S.cs.find(x=>x.phone==ph);$('#rd').innerHTML=!c?(ph?'<span class="err">Customer not found</span>':''):`<div class="ok">${bal(S,c.id)} pts available</div><label>Points to redeem (min ${S.cfg.min})</label><input inputmode="numeric" data-on-input="modules_redemptions_2"><p>Discount value: <b id="rv2">KES 0</b></p><button class="big" data-on-click="modules_redemptions_3" ${ap([c.id],'click')}>Confirm redemption</button>`}
+ 
+-export function redeem(id){const p=Math.floor(+view.pts||0),c=S.cs.find(x=>x.id==id),b=bal(S,id);if(p<S.cfg.min)return toast('Minimum '+S.cfg.min+' points');if(p>b)return toast('Exceeds balance');
+- return ask('Redeem '+p+' points for '+money(p*20/100)+'?',()=>{L(S,id,'REDEEM',-p,'Redeemed in shop');sendSms(S,c,'redeem',{pts:p,val:p*20/100,bal:bal(S,id)});save();view.pts='';toast('Redeemed '+money(p*20/100));render()})}
++export function redeem(id){
++  const c=S.cs.find(x=>x.id==id),p=Math.floor(+view.pts||0);if(!c)return toast('Customer not found');
++  if(p<S.cfg.min)return toast('Minimum '+S.cfg.min+' points');if(p>bal(S,id))return toast('Exceeds balance');
++  const key=view.rkey||(view.rkey=newKey());
++  return ask('Redeem '+p+' points for '+money(p*20/100)+'?',async()=>{try{const r=await svc.redeem({customer:c,points:p,key});view.rkey=null;view.pts='';toast('Redeemed '+money(r.valueKes))}catch(e){toast(errText(e))}render()})
++}
+ 
+ export function redeem3(){const H=S.led.filter(l=>l.type=='REDEEM').slice().reverse();return`<div class="two"><div>${redeemUI()}</div><div><h2>Redemption history</h2><table class="tb"><thead><tr><th>Customer<th>Points<th>Value<th>Balance after<th>Date</tr></thead>${H.map(l=>`<tr><td>${nmc(l.c)}<td>${-l.pts}<td>${money(-l.pts/5)}<td>${l.after}<td>${dt(l.at)}`).join('')}</table><div class="mv">${H.map(l=>`<div class="li"><span>${nmc(l.c)}</span><b>${-l.pts} pts · ${money(-l.pts/5)}</b></div>`).join('')||'<p class="mu">No redemptions yet.</p>'}</div></div></div>`}
+ 
+diff --git a/js/modules/referrals.js b/js/modules/referrals.js
+index a767e1e..b86fabf 100644
+--- a/js/modules/referrals.js
++++ b/js/modules/referrals.js
+@@ -1,18 +1,19 @@
+ // modules/referrals
+-import { S, view } from '../core/state.js';
+-import { $, bd, money, nmc, norm, now, save, toast } from '../core/utils.js';
+ import { ask, render } from '../app/shell.js';
+-import { award } from './vouchers.js';
+ import { registerActions } from '../core/actions.js';
++import { S } from '../core/state.js';
++import { $, bd, money, nmc, norm, toast } from '../core/utils.js';
++import { errText } from '../services/api.js';
++import { svc } from '../services/index.js';
+ 
+ export function refUI(){const R=S.refs,n=s=>R.filter(r=>r.st==s).length;return`<h2>Referrals</h2><div class="grid"><div class="stat"><b>${R.length}</b><span>Total</span></div><div class="stat"><b>${n('PENDING')}</b><span>Pending</span></div><div class="stat"><b>${n('REWARDED')}</b><span>Rewarded</span></div><div class="stat"><b>${n('REWARDED')*(S.cfg.ref+S.cfg.inv)}</b><span>Points issued</span></div></div><div class="two" style="margin-top:12px"><div class="card"><h3>Register referral</h3><input id="rg1" placeholder="Inviter referral code"><input id="rg2" inputmode="tel" placeholder="Invitee phone"><button class="big" data-on-click="modules_referrals_1">Register (pending)</button></div><div class="card"><h3>Reward draw: DEMO / SIMULATED</h3><p class="mu">Not connected to any real prize service. Production use stays disabled pending Kenyan legal and regulatory review.</p><button class="s" data-on-click="modules_referrals_2">Draw: ${S.draw?'ON':'OFF'}</button> <button ${S.draw?'':'disabled'} data-on-click="modules_referrals_3">Run simulated draw</button></div></div>${R.slice().reverse().map(r=>`<div class="card"><div class="li"><span>${nmc(r.from)} → ${nmc(r.to)}</span>${bd(r.st)}</div><span class="mu">${r.txId?'Qualifying '+r.txId+' ('+money(r.amt)+')':'Awaiting purchase above KES '+S.cfg.refMin}${r.draw?' · Draw: '+r.draw:''}</span></div>`).join('')}`}
+ 
+-export function regRef(){const f=S.cs.find(c=>c.code==$('#rg1').value.trim().toUpperCase()),p=norm($('#rg2').value);if(!f||!p)return toast('Check code and phone');if(f.phone==p)return toast('No self-referrals');let c=S.cs.find(x=>x.phone==p);if(c&&S.refs.some(r=>r.to==c.id))return toast('Customer already referred');if(!c){c={id:'c'+(S.cs.length+1),phone:p,code:Math.random().toString(36).slice(2,8).toUpperCase(),mkt:false,by:f.id,created:now()};S.cs.push(c)}c.by=f.id;S.refs.push({id:'r'+(S.refs.length+1),from:f.id,to:c.id,amt:0,st:'PENDING'});save();toast('Referral registered');render()}
++export async function regRef(){const code=$('#rg1').value.trim().toUpperCase(),p=norm($('#rg2').value);if(!code||!p)return toast('Check code and phone');try{await svc.registerReferral({phone:p,code});toast('Referral registered')}catch(e){toast(errText(e))}render()}
+ 
+-export function runDraw(){const rs=S.refs.filter(r=>r.st=='REWARDED'&&!r.draw),vs=S.vo.filter(v=>v.st=='AVAILABLE');if(!rs.length||!vs.length)return toast('Needs a rewarded referral and an available voucher');if(!view.dc){view.dc=1;return ask('Run simulated draw (DEMO)?',()=>runDraw())}view.dc=0;const r=rs[Math.floor(Math.random()*rs.length)],v=vs[Math.floor(Math.random()*vs.length)];award(v,r.from);r.draw=v.code+' ('+v.type+' '+v.val+')';S.audit.push({at:now(),a:'DRAW '+r.id});save();toast('Winner '+nmc(r.from)+': '+v.code);render()}
++export function runDraw(){return ask('Run simulated draw (DEMO)?',async()=>{try{const r=await svc.runDraw();toast(r.message)}catch(e){toast(errText(e))}render()})}
+ 
+ registerActions({
+ modules_referrals_1(p,event){regRef()},
+-modules_referrals_2(p,event){S.draw=!S.draw;save();render()},
++async modules_referrals_2(p,event){try{await svc.setDrawEnabled(!S.draw)}catch(e){toast(errText(e))}render()},
+ modules_referrals_3(p,event){runDraw()}
+ });
+diff --git a/js/modules/reports.js b/js/modules/reports.js
+index 2194848..cd9ee57 100644
+--- a/js/modules/reports.js
++++ b/js/modules/reports.js
+@@ -1,15 +1,15 @@
+ // modules/reports
++import { go, render } from '../app/shell.js';
++import { registerActions } from '../core/actions.js';
+ import { S, view } from '../core/state.js';
+ import { ap, bd, money, nmc, now, toast } from '../core/utils.js';
+ import { bal } from './points.js';
+-import { registerActions } from '../core/actions.js';
+-import { go, render } from '../app/shell.js';
+ 
+-export function repUI(){const g=view.rg||'7',cut=g=='all'?0:Date.now()-g*864e5,T=S.tx.filter(t=>t.status=='COMPLETED'&&new Date(t.at)>=cut),its=T.flatMap(t=>t.items),sm=(a)=>a.reduce((x,i)=>x+i.price,0),sv=sm(its.filter(i=>i.type=='SERVICE')),pr=sm(its.filter(i=>i.type=='PRODUCT')),earned=S.led.filter(l=>l.pts>0&&new Date(l.at)>=cut).reduce((a,l)=>a+l.pts,0),red=-S.led.filter(l=>l.type=='REDEEM'&&new Date(l.at)>=cut).reduce((a,l)=>a+l.pts,0),sm2=S.sms.filter(m=>new Date(m.at)>=cut),ok=sm2.filter(m=>m.st!='FAILED').length,newC=S.cs.filter(c=>new Date(c.created)>=cut).length,ret=S.cs.filter(c=>S.tx.filter(t=>t.c==c.id).length>1).length,camp={};sm2.forEach(m=>{const k=m.camp||'No campaign';camp[k]=(camp[k]||0)+1});const st=(b,s)=>`<div class="stat"><b>${b}</b><span>${s}</span></div>`;return`<h2>Reports</h2><select data-on-change="modules_reports_1">${[['1','Today'],['7','Last 7 days'],['30','Last 30 days'],['all','All time']].map(o=>`<option value="${o[0]}"${o[0]==g?' selected':''}>${o[1]}</option>`).join('')}</select><div class="grid">${st(money(sv+pr),'Sales ('+T.length+' tx)')}${st(money(sv),'Services')}${st(money(pr),'Products')}${st(earned,'Points earned')}${st(red,'Points redeemed')}${st(S.cs.reduce((a,c)=>a+bal(S,c.id),0),'Points liability')}${st(newC+' / '+ret,'New / returning')}${st(S.refs.filter(r=>r.st=='REWARDED').length+'/'+S.refs.length,'Referral conversion')}${st(S.vo.filter(v=>v.st=='REDEEMED').length+'/'+S.vo.length,'Vouchers used')}${st((sm2.length?Math.round(ok/sm2.length*100):0)+'%','SMS delivered · '+money(sm2.length*S.cfg.sms))}</div><div class="card" style="margin-top:12px"><h3>Campaign performance (SMS)</h3>${Object.entries(camp).map(e=>`<div class="li"><span>${e[0]}</span><b>${e[1]}</b></div>`).join('')}</div><button class="big" data-on-click="modules_reports_2" ${ap([cut],'click')}>Copy CSV</button>`}
++export function repUI(){const g=view.rg||'7',cut=g=='all'?0:Date.now()-g*864e5,T=S.tx.filter(t=>t.status=='COMPLETED'&&new Date(t.at)>=cut),its=T.flatMap(t=>t.items),sm=(a)=>a.reduce((x,i)=>x+i.price,0),sv=sm(its.filter(i=>i.type=='SERVICE')),pr=sm(its.filter(i=>i.type=='PRODUCT')),earned=S.led.filter(l=>l.pts>0&&new Date(l.at)>=cut).reduce((a,l)=>a+l.pts,0),red=-S.led.filter(l=>l.type=='REDEEM'&&new Date(l.at)>=cut).reduce((a,l)=>a+l.pts,0),sm2=S.sms.filter(m=>new Date(m.at)>=cut),ok=sm2.filter(m=>m.st!='FAILED').length,newC=S.cs.filter(c=>new Date(c.created)>=cut).length,ret=S.cs.filter(c=>(c.txCount??S.tx.filter(t=>t.c==c.id).length)>1).length,camp={};sm2.forEach(m=>{const k=m.camp||'No campaign';camp[k]=(camp[k]||0)+1});const st=(b,s)=>`<div class="stat"><b>${b}</b><span>${s}</span></div>`;return`<h2>Reports</h2><select data-on-change="modules_reports_1">${[['1','Today'],['7','Last 7 days'],['30','Last 30 days'],['all','All time']].map(o=>`<option value="${o[0]}"${o[0]==g?' selected':''}>${o[1]}</option>`).join('')}</select><div class="grid">${st(money(sv+pr),'Sales ('+T.length+' tx)')}${st(money(sv),'Services')}${st(money(pr),'Products')}${st(earned,'Points earned')}${st(red,'Points redeemed')}${st(S.cs.reduce((a,c)=>a+bal(S,c.id),0),'Points liability')}${st(newC+' / '+ret,'New / returning')}${st(S.refs.filter(r=>r.st=='REWARDED').length+'/'+S.refs.length,'Referral conversion')}${st(S.vo.filter(v=>v.st=='REDEEMED').length+'/'+S.vo.length,'Vouchers used')}${st((sm2.length?Math.round(ok/sm2.length*100):0)+'%','SMS delivered · '+money(sm2.length*S.cfg.sms))}</div><div class="card" style="margin-top:12px"><h3>Campaign performance (SMS)</h3>${Object.entries(camp).map(e=>`<div class="li"><span>${e[0]}</span><b>${e[1]}</b></div>`).join('')}</div><button class="big" data-on-click="modules_reports_2" ${ap([cut],'click')}>Copy CSV</button>`}
+ 
+ export function csv(cut){const r=['id,phone,total,eligible,points,status,date',...S.tx.filter(t=>new Date(t.at)>=cut).map(t=>[t.id,t.phone,t.total,t.elig,t.pts,t.status,t.at].join(','))].join('\n');navigator.clipboard?navigator.clipboard.writeText(r).then(()=>toast('CSV copied'),()=>toast('Copy failed')):toast('Copy unavailable')}
+ 
+-export function overUI2(){const D0=now().slice(0,10),ok=t=>t.status=='COMPLETED',tod=S.tx.filter(t=>ok(t)&&t.at.slice(0,10)==D0),sum=a=>a.reduce((x,t)=>x+t.total,0),liab=S.cs.reduce((a,c)=>a+bal(S,c.id),0),tl=S.led.filter(l=>l.at.slice(0,10)==D0),aw=tl.filter(l=>l.pts>0).reduce((a,l)=>a+l.pts,0),rd=-tl.filter(l=>l.type=='REDEEM').reduce((a,l)=>a+l.pts,0),sm=S.sms.filter(m=>m.at.slice(0,10)==D0),ret=S.cs.filter(c=>S.tx.filter(t=>t.c==c.id).length>1).length,days=[...Array(6)].map((_,i)=>{const d=new Date(Date.now()-(5-i)*864e5).toISOString().slice(0,10);return[d.slice(5),sum(S.tx.filter(t=>ok(t)&&t.at.slice(0,10)==d))]}),mx=Math.max(1,...days.map(d=>d[1])),its=S.tx.filter(ok).flatMap(t=>t.items),sv=its.filter(i=>i.type=='SERVICE').reduce((a,i)=>a+i.price,0),pr=its.filter(i=>i.type=='PRODUCT').reduce((a,i)=>a+i.price,0),st=(b,s)=>`<div class="stat"><b>${b}</b><span>${s}</span></div>`,pc=v=>Math.round(v/Math.max(1,sv+pr)*100),br=(n,v)=>`<div class="li"><span>${n}</span><b>${money(v)} (${pc(v)}%)</b></div><div style="background:var(--ac2);border-radius:6px;margin-bottom:8px"><div style="height:10px;width:${pc(v)}%;background:var(--ac);border-radius:6px"></div></div>`;
++export function overUI2(){const D0=now().slice(0,10),ok=t=>t.status=='COMPLETED',tod=S.tx.filter(t=>ok(t)&&t.at.slice(0,10)==D0),sum=a=>a.reduce((x,t)=>x+t.total,0),liab=S.cs.reduce((a,c)=>a+bal(S,c.id),0),tl=S.led.filter(l=>l.at.slice(0,10)==D0),aw=tl.filter(l=>l.pts>0).reduce((a,l)=>a+l.pts,0),rd=-tl.filter(l=>l.type=='REDEEM').reduce((a,l)=>a+l.pts,0),sm=S.sms.filter(m=>m.at.slice(0,10)==D0),ret=S.cs.filter(c=>(c.txCount??S.tx.filter(t=>t.c==c.id).length)>1).length,days=[...Array(6)].map((_,i)=>{const d=new Date(Date.now()-(5-i)*864e5).toISOString().slice(0,10);return[d.slice(5),sum(S.tx.filter(t=>ok(t)&&t.at.slice(0,10)==d))]}),mx=Math.max(1,...days.map(d=>d[1])),its=S.tx.filter(ok).flatMap(t=>t.items),sv=its.filter(i=>i.type=='SERVICE').reduce((a,i)=>a+i.price,0),pr=its.filter(i=>i.type=='PRODUCT').reduce((a,i)=>a+i.price,0),st=(b,s)=>`<div class="stat"><b>${b}</b><span>${s}</span></div>`,pc=v=>Math.round(v/Math.max(1,sv+pr)*100),br=(n,v)=>`<div class="li"><span>${n}</span><b>${money(v)} (${pc(v)}%)</b></div><div style="background:var(--ac2);border-radius:6px;margin-bottom:8px"><div style="height:10px;width:${pc(v)}%;background:var(--ac);border-radius:6px"></div></div>`;
+ return`<h2>Overview</h2><div class="grid">${st(money(sum(tod)),'Today’s sales')}${st(tod.length,'Today’s transactions')}${st(aw,'Points awarded today')}${st(rd,'Points redeemed today')}${st(S.cs.length,'Customers')}${st(ret,'Returning customers')}${st(S.refs.filter(r=>r.st=='PENDING').length,'Pending referrals')}${st(liab+' pts',money(liab/5)+' liability')}${st(sm.length,'SMS today · '+money(sm.length*S.cfg.sms))}</div><div class="row" style="margin:12px 0"><button data-on-click="modules_reports_3">+ New Sale</button><button class="s" data-on-click="modules_reports_4">Redeem</button><button class="s" data-on-click="modules_reports_5">Referrals</button><button class="s" data-on-click="modules_reports_6">SMS</button></div><div class="two"><div class="card"><h3>Sales, last 6 days</h3><div class="bars" style="height:140px">${days.map(d=>`<div title="${d[1]}" style="height:${d[1]/mx*100}%"></div>`).join('')}</div><div class="row mu">${days.map(d=>`<span>${d[0]}</span>`).join('')}</div></div><div class="card"><h3>Category breakdown</h3>${br('Services',sv)}${br('Products',pr)}</div></div><div class="two"><div class="card"><h3>Recent transactions</h3>${S.tx.slice(-6).reverse().map(t=>`<div class="li"><span>${t.id} · ${t.phone}<br><span class="mu">${t.items.map(i=>i.name).join(', ')}</span></span><span>${money(t.total)}<br>${bd(t.status)} +${t.pts}</span></div>`).join('')}</div><div><div class="card"><h3>Recent customer activity</h3>${S.led.slice(-5).reverse().map(l=>`<div class="li"><span>${nmc(l.c)}<br><span class="mu">${l.desc}</span></span><b>${l.pts>0?'+':''}${l.pts}</b></div>`).join('')}</div><div class="card"><h3>Recent SMS</h3>${S.sms.slice(-4).reverse().map(m=>`<div class="li"><span>${m.phone}<br><span class="mu">${m.msg.slice(0,50)}…</span></span>${bd(m.st)}</div>`).join('')}</div></div></div>`}
+ 
+ export function repUI2(){const days=[...Array(7)].map((_,i)=>{const d=new Date(Date.now()-(6-i)*864e5).toISOString().slice(0,10);return[d.slice(5),S.tx.filter(t=>t.status=='COMPLETED'&&t.at.slice(0,10)==d).reduce((a,t)=>a+t.total,0)]}),mx=Math.max(1,...days.map(d=>d[1])),w=Date.now(),sn=n=>S.tx.filter(t=>t.status=='COMPLETED'&&new Date(t.at)>=w-n*864e5).reduce((a,t)=>a+t.total,0);return repUI()+`<div class="two" style="margin-top:12px"><div class="card"><h3>Daily sales, last 7 days</h3><div class="bars" style="height:140px">${days.map(d=>`<div title="${d[1]}" style="height:${d[1]/mx*100}%"></div>`).join('')}</div><div class="row mu">${days.map(d=>`<span>${d[0]}</span>`).join('')}</div><p class="mu">Weekly ${money(sn(7))} · Monthly ${money(sn(30))}</p></div><div class="card"><h3>Consent and SMS cost</h3><div class="li"><span>Marketing opted in</span><b>${S.cs.filter(c=>c.mkt).length}/${S.cs.length}</b></div><div class="li"><span>Promotional SMS</span><b>${S.sms.filter(m=>m.camp).length}</b></div><div class="li"><span>Transactional only</span><b>${S.sms.filter(m=>!m.camp).length}</b></div><div class="li"><span>Total SMS cost</span><b>${money(S.sms.length*S.cfg.sms)}</b></div></div></div>`}
+diff --git a/js/modules/settings.js b/js/modules/settings.js
+index 680b429..f53e7b4 100644
+--- a/js/modules/settings.js
++++ b/js/modules/settings.js
+@@ -1,19 +1,25 @@
+ // modules/settings
+-import { S, setS, setTab } from '../core/state.js';
+-import { dt, save, toast } from '../core/utils.js';
++import { ask, render } from '../app/shell.js';
+ import { registerActions } from '../core/actions.js';
++import { S, setS, setTab } from '../core/state.js';
++import { dt, esc, save, toast } from '../core/utils.js';
+ import { seed } from './data.js';
+-import { render } from '../app/shell.js';
++import { errText } from '../services/api.js';
++import { svc } from '../services/index.js';
++import { isLive } from '../services/runtime.js';
+ 
+ export function set2(){return`<h2>Settings</h2><div class="two"><div class="card"><label>Services points per KES 100</label><input inputmode="numeric" value="${S.cfg.sv}" data-on-change="modules_settings_1"><label>Products points per KES 100</label><input inputmode="numeric" value="${S.cfg.pr}" data-on-change="modules_settings_2"><label>Inviter / invitee points</label><div class="row"><input value="${S.cfg.ref}" data-on-change="modules_settings_3"><input value="${S.cfg.inv}" data-on-change="modules_settings_4"></div><label>SMS cost (KES)</label><input value="${S.cfg.sms}" data-on-change="modules_settings_5"><p class="mu">Rate changes apply to new sales only. 100 points = KES 20; minimum redemption 100; referral needs a purchase above KES 50.</p></div><div class="card"><h3>Production pipeline</h3><p class="mu">Simulated here behind one data layer: Firebase Auth and Phone OTP, Firestore, Cloud Run writes, Host Pinnacle SMS (keys in Secret Manager), App Check, Firestore Rules, rate limiting. Audit entries: ${S.audit.length}.</p></div></div><button class="d big" data-on-click="modules_settings_6">Reset demo data</button>`}
+ 
+-export function set3(){const a=S.audit.slice(-12).reverse().map(x=>`<div class="li"><span>${x.a}</span><span class="mu">${dt(x.at)}</span></div>`).join('')||'<span class="mu">No events yet.</span>';return set2().replace(`onclick="if(confirm('Reset all demo data?')){S=seed();save();tab='over';render();toast('Demo reset')}"`,`onclick="ask('Reset all demo data?',()=>{S=seed();save();tab='over';render();toast('Demo reset')})"`).replace('<button class="d big"',`<div class="card"><h3>Audit and consent log</h3>${a}</div><button class="d big"`)}
++async function setCfg(patch){try{await svc.updateSettings(patch);toast('Saved')}catch(e){toast(errText(e));render()}}
++export function set3(){
++  const live=isLive(),rows=(live?S.audit.slice(0,12):S.audit.slice(-12).reverse()).map(x=>`<div class="li"><span>${esc(x.a)}</span><span class="mu">${dt(x.at)}</span></div>`).join('');
++  return `<h2>Settings</h2><div class="two"><div class="card"><label>Services points per KES 100</label><input inputmode="numeric" value="${S.cfg.sv}" data-on-change="modules_settings_1"><label>Products points per KES 100</label><input inputmode="numeric" value="${S.cfg.pr}" data-on-change="modules_settings_2"><label>Inviter / invitee points</label><div class="row"><input value="${S.cfg.ref}" data-on-change="modules_settings_3"><input value="${S.cfg.inv}" data-on-change="modules_settings_4"></div><label>SMS cost (KES)</label><input value="${S.cfg.sms}" data-on-change="modules_settings_5"><p class="mu">Rate changes apply to new sales only. 100 points = KES 20; minimum redemption ${S.cfg.min}; a referral needs a purchase above KES ${S.cfg.refMin}. Reward draw is ${S.draw?'ON':'OFF'}${live?' and also needs legal approval in the console':' (DEMO only)'}.</p></div><div class="card"><h3>${live?'Activity log':'Audit and consent log'}</h3>${rows||'<span class="mu">No events yet.</span>'}</div></div>${live?'':'<button class="d big" data-on-click="modules_settings_6">Reset demo data</button>'}`}
+ 
+ registerActions({
+-modules_settings_1(p,event){S.cfg.sv=+this.value||0;save()},
+-modules_settings_2(p,event){S.cfg.pr=+this.value||0;save()},
+-modules_settings_3(p,event){S.cfg.ref=+this.value||0;save()},
+-modules_settings_4(p,event){S.cfg.inv=+this.value||0;save()},
+-modules_settings_5(p,event){S.cfg.sms=+this.value||0;save()},
+-modules_settings_6(p,event){if(confirm('Reset all demo data?')){setS(seed());save();setTab('over');render();toast('Demo reset')}}
++async modules_settings_1(p,event){await setCfg({servicesPointsRate:+this.value||0})},
++async modules_settings_2(p,event){await setCfg({productsPointsRate:+this.value||0})},
++async modules_settings_3(p,event){await setCfg({referrerReward:+this.value||0})},
++async modules_settings_4(p,event){await setCfg({inviteeReward:+this.value||0})},
++async modules_settings_5(p,event){await setCfg({smsCost:+this.value||0})},
++modules_settings_6(p,event){ask('Reset all demo data?',()=>{setS(seed());save();setTab('over');render();toast('Demo reset')})}
+ });
+diff --git a/js/modules/sms.js b/js/modules/sms.js
+index 9179eaf..b7e2a5d 100644
+--- a/js/modules/sms.js
++++ b/js/modules/sms.js
+@@ -1,22 +1,27 @@
+ // modules/sms
+-import { TPL } from '../core/constants.js';
+-import { $, ap, bd, dt, fx, money, now, save, toast } from '../core/utils.js';
+-import { S, view } from '../core/state.js';
+ import { render } from '../app/shell.js';
+ import { registerActions } from '../core/actions.js';
++import { TPL } from '../core/constants.js';
++import { S, view } from '../core/state.js';
++import { $, ap, bd, dt, esc, fx, money, now, toast } from '../core/utils.js';
++import { errText } from '../services/api.js';
++import { svc } from '../services/index.js';
++import { isLive } from '../services/runtime.js';
++import { DEMO_PLACEHOLDERS, LIVE_PLACEHOLDERS, OPT_OUT, fillTemplate } from '../services/templates.js';
+ 
+ export function sendSms(S,c,type,vars,at){let b=(S.tpl&&S.tpl[type]||TPL[type]).replace(/{(\w+)}/g,(m,k)=>vars[k]);let camp=null;
+  if(c.mkt){const td=now().slice(0,10);camp=S.camps.find(k=>k.id==S.act&&k.on&&(!k.end||k.end>=td)&&(!k.start||k.start<=td));if(camp)b+=' '+camp.ad+' '+(camp.url||'https://perks.samuhia.co.ke')+' Opt out: perks.samuhia.co.ke'}
+  const fail=!at&&Math.random()<0.0;S.sms.push({id:'m'+S.sms.length,phone:c.phone,type,camp:camp&&camp.name,msg:b,st:fail?'FAILED':'SENT',cost:S.cfg.sms,at:at||now()})}
+ 
+-export function tp(){const t=$('#tb').value,cp=S.camps.find(k=>k.id==S.act),v={amount:600,pts:36,bal:255,val:51,code:'DISC50'};$('#tpv').innerHTML='<p>'+t.replace(/{(\w+)}/g,(m,k)=>v[k]??m)+'</p><p class="mu">+ '+cp.ad+' https://perks.samuhia.co.ke Opt out: perks.samuhia.co.ke</p>'}
++export function tp(){const t=$('#tb').value,cp=S.camps.find(k=>k.id==S.act);$('#tpv').innerHTML='<p>'+esc(fillTemplate(t))+'</p>'+(cp?'<p class="mu">+ '+cp.ad+' '+esc(cp.url||'https://perks.samuhia.co.ke')+' '+OPT_OUT+'</p>':'<p class="mu">No active campaign: messages go out without an advert.</p>')}
++export const placeholderChips=()=>isLive()?LIVE_PLACEHOLDERS.map(x=>'{{'+x+'}}'):DEMO_PLACEHOLDERS.map(x=>'{'+x+'}');
+ 
+-export function retry(id){const m=S.sms.find(x=>x.id==id);m.st='RETRIED';render();setTimeout(()=>{m.st='SENT';save();render();toast('Retry delivered (simulated)')},900)}
++export async function retry(id){try{await svc.retrySms(id);toast('Retry sent')}catch(e){toast(errText(e))}render()}
+ 
+ export function sms3(){const f=view.sf||'all',M=S.sms.filter(m=>(f=='all'||(f=='FAILED'?m.st=='FAILED':m.type==f))&&m.phone.includes(fx(view.sq))).slice().reverse().slice(0,40),o=S.sms.find(m=>m.id==view.sm);
+-return`<h2>SMS Centre</h2><p class="mu">Simulated only. ${S.sms.length} messages · ${money(S.sms.length*S.cfg.sms)} est.</p><div class="bar"><input placeholder="Search phone" value="${view.sq||''}" data-on-change="modules_sms_6"><select data-on-change="modules_sms_7">${[['all','All'],['sale','Receipts'],['ref','Referral'],['redeem','Redemption'],['voucher','Voucher'],['welcome','Welcome'],['FAILED','Failed']].map(o=>`<option value="${o[0]}"${o[0]==f?' selected':''}>${o[1]}</option>`).join('')}</select></div>${o?`<div class="card"><h3>${o.id} · ${o.phone}</h3><p>${o.msg}</p><p class="mu">${o.type} · campaign: ${o.camp||'none (no marketing consent)'} · ${bd(o.st)} · KES ${o.cost.toFixed(2)} · ${dt(o.at)}</p><div class="row">${o.st=='FAILED'?`<button data-on-click="modules_sms_1" ${ap([o.id],'click')}>Retry</button>`:''}<button class="s" data-on-click="modules_sms_2">Close</button></div></div>`:''}<table class="tb"><thead><tr><th>Recipient<th>Type<th>Campaign<th>Message<th>Status<th>Cost<th>Time<th></tr></thead>${M.map(m=>`<tr class="cr" data-on-click="modules_sms_4" ${ap([m.id],'click')} role="button" tabindex="0"><td>${m.phone}<td>${m.type}<td>${m.camp||'-'}<td>${m.msg.slice(0,55)}…<td>${bd(m.st)}<td>${m.cost.toFixed(2)}<td>${dt(m.at)}<td>${m.st=='FAILED'?`<button data-on-click="modules_sms_3" ${ap([m.id],'click')}>Retry</button>`:''}`).join('')}</table><div class="mv">${M.map(m=>`<div class="card"><div class="li"><b>${m.phone}</b>${bd(m.st)}</div><p style="margin:0;font-size:14px">${m.msg}</p><span class="mu">${m.type} · ${m.camp?'campaign: '+m.camp:'no promo (no consent)'} · KES ${m.cost.toFixed(2)}</span>${m.st=='FAILED'?`<button style="margin-top:8px" data-on-click="modules_sms_5" ${ap([m.id],'click')}>Retry</button>`:''}</div>`).join('')}</div>`}
++return`<h2>SMS Centre</h2><p class="mu">Simulated only. ${S.sms.length} messages · ${money(S.sms.length*S.cfg.sms)} est.</p><div class="bar"><input placeholder="Search phone" value="${view.sq||''}" data-on-change="modules_sms_6"><select data-on-change="modules_sms_7">${[['all','All'],['sale','Receipts'],['ref','Referral'],['redeem','Redemption'],['voucher','Voucher'],['welcome','Welcome'],['FAILED','Failed']].map(o=>`<option value="${o[0]}"${o[0]==f?' selected':''}>${o[1]}</option>`).join('')}</select></div>${o?`<div class="card"><h3>${o.id} · ${o.phone}</h3><p>${o.msg}</p><p class="mu">${o.type} · campaign: ${o.camp||'none (no marketing consent)'} · ${bd(o.st)} · KES ${o.cost.toFixed(2)} · ${dt(o.at)}</p><div class="row">${o.st=='FAILED'?`<button data-on-click="modules_sms_1" ${ap([o.id],'click')}>Retry</button>`:''}<button class="s" data-on-click="modules_sms_2">Close</button></div></div>`:''}<table class="tb"><thead><tr><th>Recipient<th>Type<th>Campaign<th>Message<th>Status<th>Cost<th>Time<th></tr></thead>${M.map(m=>`<tr class="cr" data-on-click="modules_sms_4" ${ap([m.id],'click')} role="button" tabindex="0"><td>${m.phone}<td>${m.type}<td>${m.camp||'-'}<td>${m.msg.slice(0,55)}…<td>${bd(m.st)+(m.delivery&&m.delivery!=='UNKNOWN'?' '+bd(m.delivery):'')}<td>${m.cost.toFixed(2)}<td>${dt(m.at)}<td>${m.st=='FAILED'?`<button data-on-click="modules_sms_3" ${ap([m.id],'click')}>Retry</button>`:''}`).join('')}</table><div class="mv">${M.map(m=>`<div class="card"><div class="li"><b>${m.phone}</b>${bd(m.st)+(m.delivery&&m.delivery!=='UNKNOWN'?' '+bd(m.delivery):'')}</div><p style="margin:0;font-size:14px">${m.msg}</p><span class="mu">${m.type} · ${m.camp?'campaign: '+m.camp:'no promo (no consent)'} · KES ${m.cost.toFixed(2)}</span>${m.st=='FAILED'?`<button style="margin-top:8px" data-on-click="modules_sms_5" ${ap([m.id],'click')}>Retry</button>`:''}</div>`).join('')}</div>`}
+ 
+-export function tplUI2(){const k=view.tk||'sale',b=S.tpl[k],at=S.tplAt||{};return`<h2>SMS Templates</h2><div class="split"><div class="card"><select data-on-change="modules_sms_10">${Object.keys(S.tpl).map(x=>`<option${x==k?' selected':''}>${x}</option>`).join('')}</select><textarea id="tb" rows="6" data-on-input="modules_sms_11">${b}</textarea><p class="mu" id="cc"></p><div>${['{amount}','{pts}','{bal}','{val}','{code}'].map(p=>`<span class="pill" style="cursor:pointer;margin-right:4px" data-on-click="modules_sms_8" ${ap([p],'click')} role="button" tabindex="0">${p}</span>`).join('')}</div><p class="mu">Last updated ${at[k]?dt(at[k]):'seed'}. Campaign adverts attach automatically, only with marketing consent.</p><button class="big" data-on-click="modules_sms_12" ${ap([k,k],'click')}>Save template</button></div><div><div class="card"><h3>Live preview with campaign</h3><div id="tpv"></div></div><div class="card"><h3>All templates</h3>${Object.keys(S.tpl).map(x=>`<div class="li" style="cursor:pointer" data-on-click="modules_sms_9" ${ap([x],'click')} role="button" tabindex="0"><span>${x}</span><span class="mu">${S.tpl[x].length} chars</span></div>`).join('')}</div></div></div>`}
++export function tplUI2(){const k=view.tk||'sale',b=S.tpl[k],at=S.tplAt||{};return`<h2>SMS Templates</h2><div class="split"><div class="card"><select data-on-change="modules_sms_10">${Object.keys(S.tpl).map(x=>`<option${x==k?' selected':''}>${x}</option>`).join('')}</select><textarea id="tb" rows="6" data-on-input="modules_sms_11">${b}</textarea><p class="mu" id="cc"></p><div>${placeholderChips().map(p=>`<span class="pill" style="cursor:pointer;margin-right:4px" data-on-click="modules_sms_8" ${ap([p],'click')} role="button" tabindex="0">${p}</span>`).join('')}</div><p class="mu">Last updated ${at[k]?dt(at[k]):'seed'}. Campaign adverts attach automatically, only with marketing consent.</p><button class="big" data-on-click="modules_sms_12" ${ap([k,k],'click')}>Save template</button></div><div><div class="card"><h3>Live preview with campaign</h3><div id="tpv"></div></div><div class="card"><h3>All templates</h3>${Object.keys(S.tpl).map(x=>`<div class="li" style="cursor:pointer" data-on-click="modules_sms_9" ${ap([x],'click')} role="button" tabindex="0"><span>${x}</span><span class="mu">${S.tpl[x].length} chars</span></div>`).join('')}</div></div></div>`}
+ 
+ export function ins(p){const t=$('#tb');t.value+=p;tp();cc()}
+ 
+@@ -34,5 +39,5 @@ modules_sms_8(p,event){ins(p[0])},
+ modules_sms_9(p,event){view.tk=p[0];render()},
+ modules_sms_10(p,event){view.tk=this.value;render()},
+ modules_sms_11(p,event){tp();cc()},
+-modules_sms_12(p,event){S.tpl[p[0]]=$('#tb').value;(S.tplAt=S.tplAt||{})[p[1]]=now();save();toast('Template saved');render()}
++async modules_sms_12(p,event){try{await svc.saveTemplate({id:p[0],body:$('#tb').value});toast('Template saved')}catch(e){toast(errText(e))}render()}
+ });
+diff --git a/js/modules/transactions.js b/js/modules/transactions.js
+index 0f6bf83..a1b22aa 100644
+--- a/js/modules/transactions.js
++++ b/js/modules/transactions.js
+@@ -1,11 +1,13 @@
+ // modules/transactions
+-import { $, ap, bd, dt, fx, money, norm, now, save, toast } from '../core/utils.js';
+-import { sendSms } from './sms.js';
+-import { L, bal, calc } from './points.js';
+-import { D, S, done, lock, setD, setDone, setLock, view } from '../core/state.js';
+-import { CAT } from '../core/constants.js';
+ import { ask, go, render } from '../app/shell.js';
+ import { registerActions } from '../core/actions.js';
++import { CAT } from '../core/constants.js';
++import { D, S, done, lock, newDraft, setD, setDone, setLock, view } from '../core/state.js';
++import { $, ap, bd, dt, fx, money, norm, now, toast } from '../core/utils.js';
++import { L, bal, calc } from './points.js';
++import { sendSms } from './sms.js';
++import { errText, newKey } from '../services/api.js';
++import { svc } from '../services/index.js';
+ 
+ export function post(S,phone,items,nonElig,at,quiet){
+  let c=S.cs.find(x=>x.phone==phone),isNew=!c;if(!c){c={id:'c'+(S.cs.length+1),phone,code:Math.random().toString(36).slice(2,8).toUpperCase(),mkt:false,by:null,created:at||now()};S.cs.push(c);if(S.tpl)sendSms(S,c,'welcome',{code:c.code},at)}
+@@ -28,7 +30,7 @@ export function saleUI(){if(done)return doneUI();
+ 
+ export function parse(){const ph=norm(D.phone),items=D.items.filter(i=>+i.price>0).map(i=>({name:i.name,price:Math.round(+i.price)})),ne=Math.max(0,Math.round(+D.ne||0));return{ph,items,ne}}
+ 
+-export function upd(soft){const{ph,items,ne}=parse(),c=ph&&S.cs.find(x=>x.phone==ph);
++export function upd(soft){D.key=newKey();const{ph,items,ne}=parse(),c=ph&&S.cs.find(x=>x.phone==ph);
+  $('#lk').innerHTML=!D.phone?'':!ph?'<span class="err">Enter a valid Kenyan number</span>':c?`<div class="ok">Returning customer · ${bal(S,c.id)} pts (${money(bal(S,c.id)/5)})</div>`:'<div class="ok warn">New customer</div>';
+  const rc=D.ref&&S.cs.find(x=>x.code==D.ref);$('#rf').innerHTML=!D.ref?'':rc?`Valid: invited by ${rc.phone}${c&&c.id==rc.id?' <span class=err>(self-referral not allowed)</span>':''}`:'<span class=err>Code not found</span>';
+  const it=calc(S,items),pts=it.reduce((a,i)=>a+i.pts,0),elig=it.reduce((a,i)=>a+i.price,0),b=c?bal(S,c.id):0,camp=S.camps.find(k=>k.id==S.act);
+@@ -36,17 +38,24 @@ export function upd(soft){const{ph,items,ne}=parse(),c=ph&&S.cs.find(x=>x.phone=
+ 
+ export function record(){if(lock)return;const q=parse();if(!q.ph||!q.items.length)return toast('Enter a valid phone and at least one priced item');ask('Record sale of '+money(q.items.reduce((a,i)=>a+i.price,0)+q.ne)+' for '+q.ph+'?',rec2)}
+ 
+-export function rec2(){if(lock)return;const{ph,items,ne}=parse();if(!ph)return toast('Enter a valid phone number');if(!items.length)return toast('Add at least one item with a price');
+- let c=S.cs.find(x=>x.phone==ph);const rc=D.ref&&S.cs.find(x=>x.code==D.ref);if(D.ref&&!rc)return toast('Invalid referral code');if(rc&&c&&rc.id==c.id)return toast('Self-referral not allowed');
+- setLock(true);$('#rec').disabled=true;$('#rec').textContent='Recording…';
+- setTimeout(()=>{const r=post(S,ph,items,ne);if(rc&&r.isNew&&!r.c.by){r.c.by=rc.id;if(r.t.elig>S.cfg.refMin){S.refs.push({id:'r'+(S.refs.length+1),from:rc.id,to:r.c.id,amt:0,st:'PENDING'});const x=S.refs[S.refs.length-1];S.refs.pop();/* reuse post logic */
+-   x.st='REWARDED';x.amt=r.t.elig;x.txId=r.t.id;S.refs.push(x);L(S,rc.id,'REFERRAL',S.cfg.ref,'Referral reward');L(S,r.c.id,'REFERRAL',S.cfg.inv,'Welcome referral reward');sendSms(S,rc,'ref',{pts:S.cfg.ref,bal:bal(S,rc.id)});sendSms(S,r.c,'ref',{pts:S.cfg.inv,bal:bal(S,r.c.id)});r.t.refRewarded=true}
+-  else S.refs.push({id:'r'+(S.refs.length+1),from:rc.id,to:r.c.id,amt:0,st:'PENDING'})}
+-  save();setLock(false);setDone({...r,bal:bal(S,r.c.id)});setD({phone:'',items:[{name:'Printing',price:''}],ne:'',ref:''});render()},500)}
++export async function rec2(){
++  if(lock)return;
++  const{ph,items,ne}=parse();
++  if(!ph)return toast('Enter a valid phone number');
++  if(!items.length)return toast('Add at least one item with a price');
++  setLock(true);
++  const b=$('#rec');if(b){b.disabled=true;b.textContent='Recording…'}
++  try{const r=await svc.recordSale({phone:ph,items,ne,ref:D.ref,key:D.key});setDone(r);setD(newDraft())}
++  catch(e){toast(errText(e))}
++  finally{setLock(false);render()}
++}
+ 
+ export function doneUI(){const d=done;return`<div class="card"><h2 style="color:var(--ac)">✓ Sale recorded successfully</h2><div class="li"><span>Customer</span><span>${d.c.phone}</span></div><div class="li"><span>Total</span><span>${money(d.t.total)}</span></div><div class="li"><span>Points earned</span><b>${d.t.pts}</b></div><div class="li"><span>New balance</span><b>${d.bal} pts</b></div>${d.t.refRewarded?'<div class="ok">Referral rewarded: inviter +50, invitee +30</div>':''}<div class="li"><span>SMS</span><span class="pill">SENT (simulated)</span></div><button class="big" data-on-click="modules_transactions_9">New Sale</button><button class="s big" style="margin-top:8px" data-on-click="modules_transactions_10">View Customer</button></div>`}
+ 
+-export function rev(id){const t=S.tx.find(x=>x.id==id);if(bal(S,t.c)<t.pts)return toast('Customer already spent these points');return ask('Reason for reversal',r=>{if(!r)return;t.status='REVERSED';t.reason=r;L(S,t.c,'REVERSAL',-t.pts,'Reversal of '+id+': '+r);S.audit.push({at:now(),a:'REVERSE '+id+' '+r});save();render()},1)}
++export function rev(id){
++  const t=S.tx.find(x=>x.id==id);if(!t)return;
++  return ask('Reason for reversal',async r=>{if(!r||r.trim().length<3)return toast('Give a reason (3 or more characters)');try{await svc.reverseSale({id,reason:r.trim()});toast('Sale reversed')}catch(e){toast(errText(e))}render()},1)
++}
+ 
+ export function txUI2(){const f=view,T=S.tx.filter(t=>t.phone.includes(fx(f.tq))&&(!f.ts||t.status==f.ts)&&(!f.tc||t.items.some(i=>i.type==f.tc))&&(!f.tm||t.total>=+f.tm)&&(!f.td||t.at.slice(0,10)>=f.td)).slice().reverse(),sm=t=>{const m=S.sms.find(x=>x.phone==t.phone&&x.type=='sale'&&Math.abs(new Date(x.at)-new Date(t.at))<6e4);return m?m.st:'-'},rc=S.tx.find(t=>t.id==f.rt),op=(id,l,v)=>`<option value="${id}"${id==v?' selected':''}>${l}</option>`;
+ return`<h2>Transactions</h2><div class="bar"><input placeholder="Phone" value="${f.tq||''}" data-on-change="modules_transactions_15"><select data-on-change="modules_transactions_16">${op('','Any status',f.ts)}${op('COMPLETED','Completed',f.ts)}${op('REVERSED','Reversed',f.ts)}</select><select data-on-change="modules_transactions_17">${op('','Any category',f.tc)}${op('SERVICE','Services',f.tc)}${op('PRODUCT','Products',f.tc)}</select><input inputmode="numeric" placeholder="Min KES" value="${f.tm||''}" data-on-change="modules_transactions_18"><input type="date" value="${f.td||''}" data-on-change="modules_transactions_19"></div>${rc?`<div class="card"><h3>Receipt ${rc.id} · ${rc.phone} · ${dt(rc.at)}</h3>${rc.items.map(i=>`<div class="li"><span>${i.name} (${i.type})</span><span>${money(i.price)} · ${i.pts} pts @${i.rate}</span></div>`).join('')}<div class="li"><span>Total / eligible</span><b>${money(rc.total)} / ${money(rc.elig)}</b></div>${rc.reason?'<p>Reversed: '+rc.reason+'</p>':''}<div class="row">${rc.status=='COMPLETED'?`<button class="d" data-on-click="modules_transactions_11" ${ap([rc.id],'click')}>Reverse sale</button>`:''}<button class="s" data-on-click="modules_transactions_12">Close</button></div></div>`:''}<table class="tb"><thead><tr><th>ID<th>Phone<th>Items<th>Total<th>Eligible<th>Points<th>Date<th>SMS<th>Status<th>Operator</tr></thead>${T.map(t=>`<tr class="cr" data-on-click="modules_transactions_13" ${ap([t.id],'click')} role="button" tabindex="0"><td><b>${t.id}</b><td>${t.phone}<td>${t.items.map(i=>i.name).join(', ')}<td>${money(t.total)}<td>${money(t.elig)}<td>+${t.pts}<td>${dt(t.at)}<td>${sm(t)}<td>${bd(t.status)}<td>admin`).join('')}</table><div class="mv">${T.map(t=>`<div class="card" data-on-click="modules_transactions_14" ${ap([t.id],'click')} role="button" tabindex="0"><div class="li"><span><b>${t.id}</b> · ${t.phone}<br><span class="mu">${dt(t.at)}</span></span><span>${money(t.total)}<br>${bd(t.status)} +${t.pts}</span></div></div>`).join('')}</div>`}
+@@ -54,9 +63,9 @@ return`<h2>Transactions</h2><div class="bar"><input placeholder="Phone" value="$
+ registerActions({
+ modules_transactions_1(p,event){D.items[p[0]].name=this.value;upd()},
+ modules_transactions_2(p,event){D.items[p[0]].price=this.value;upd(1)},
+-modules_transactions_3(p,event){D.items.splice(p[0],1);if(!D.items.length)D.items=[{name:'Printing',price:''}];render()},
++modules_transactions_3(p,event){D.key=newKey();D.items.splice(p[0],1);if(!D.items.length)D.items=[{name:'Printing',price:''}];render()},
+ modules_transactions_4(p,event){D.phone=this.value;upd()},
+-modules_transactions_5(p,event){D.items.push({name:'Printing',price:''});render()},
++modules_transactions_5(p,event){D.key=newKey();D.items.push({name:'Printing',price:''});render()},
+ modules_transactions_6(p,event){D.ne=this.value;upd(1)},
+ modules_transactions_7(p,event){D.ref=this.value.toUpperCase();upd(1)},
+ modules_transactions_8(p,event){record()},
+diff --git a/js/modules/vouchers.js b/js/modules/vouchers.js
+index 64ff097..f161d46 100644
+--- a/js/modules/vouchers.js
++++ b/js/modules/vouchers.js
+@@ -1,20 +1,22 @@
+ // modules/vouchers
++import { ask, render } from '../app/shell.js';
++import { registerActions } from '../core/actions.js';
+ import { S } from '../core/state.js';
++import { $, ap, bd, dt, nmc, norm, now, toast } from '../core/utils.js';
+ import { L, bal } from './points.js';
+ import { sendSms } from './sms.js';
+-import { $, ap, bd, dt, nmc, norm, now, save, toast } from '../core/utils.js';
+-import { ask, render } from '../app/shell.js';
+-import { registerActions } from '../core/actions.js';
++import { errText } from '../services/api.js';
++import { svc } from '../services/index.js';
+ 
+ export function award(v,cid){const c=S.cs.find(x=>x.id==cid);v.st='AWARDED';v.c=cid;if(v.type=='POINTS'){L(S,cid,'VOUCHER',v.val,'Voucher '+v.code);v.st='REDEEMED'}sendSms(S,c,'voucher',{code:v.code,val:v.type=='POINTS'?v.val+' pts':'KES '+v.val,bal:bal(S,cid)});S.audit.push({at:now(),a:'AWARD '+v.code+' '+c.phone})}
+ 
+-export function mkV(){const v=+$('#vv').value,t=$('#vt').value;if(!v)return toast('Enter a value');S.vo.push({id:'v'+S.vo.length,code:t.slice(0,4)+v+Math.random().toString(36).slice(2,5).toUpperCase(),type:t,val:v,st:'AVAILABLE',c:null,at:now()});save();render()}
++export async function mkV(){const v=+$('#vv').value,t=$('#vt').value;if(!v)return toast('Enter a value');try{await svc.createVoucher({type:t,value:v});toast('Voucher created')}catch(e){toast(errText(e))}render()}
+ 
+-export function bulkV(){for(let i=0;i<5;i++)S.vo.push({id:'v'+S.vo.length,code:'DEMO'+Math.random().toString(36).slice(2,6).toUpperCase(),type:'DISCOUNT',val:20,st:'AVAILABLE',c:null,at:now()});save();render()}
++export async function bulkV(){try{await svc.bulkVouchers({type:'DISCOUNT',value:20,count:5});toast('5 vouchers added')}catch(e){toast(errText(e))}render()}
+ 
+-export function asgV(id){ask('Customer phone',v=>{const p=norm(v||''),c=S.cs.find(x=>x.phone==p);if(!c)return toast('Customer not found');award(S.vo.find(x=>x.id==id),c.id);save();render()},1)}
++export function asgV(id){ask('Customer phone',async v=>{const p=norm(v||'');if(!p)return toast('Enter a valid phone');try{await svc.assignVoucher({id,phone:p});toast('Voucher assigned')}catch(e){toast(errText(e))}render()},1)}
+ 
+-export function voS(id,st){const go=()=>{S.vo.find(v=>v.id==id).st=st;S.audit.push({at:now(),a:st+' '+id});save();render()};st=='VOID'?ask('Void this voucher?',go):go()}
++export function voS(id,st){const go=async()=>{try{await svc.setVoucherStatus({id,status:st})}catch(e){toast(errText(e))}render()};st=='VOID'?ask('Void this voucher?',go):go()}
+ 
+ export function vact(v){return(v.st=='AVAILABLE'?`<button class="s" data-on-click="modules_vouchers_1" ${ap([v.id],'click')}>Assign</button> `:'')+(v.st=='AWARDED'?`<button data-on-click="modules_vouchers_2" ${ap([v.id],'click')}>Mark redeemed</button> `:'')+(v.st=='AVAILABLE'||v.st=='AWARDED'?`<button class="d" data-on-click="modules_vouchers_3" ${ap([v.id],'click')}>Void</button>`:'')}
+ 
+diff --git a/js/services/adapt.js b/js/services/adapt.js
+new file mode 100644
+index 0000000..db3d054
+--- /dev/null
++++ b/js/services/adapt.js
+@@ -0,0 +1,18 @@
++// Backend documents -> the shapes the screens already render (S.cs, S.tx, ...). One place to change if the API changes.
++
++export const iso = (ms) => new Date(ms || 0).toISOString();
++/** Anything free-text from the server is escaped once here, because the screens build HTML strings. */
++export const e = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
++
++export const cfg = (s) => ({ sv: s.servicesPointsRate, pr: s.productsPointsRate, min: s.minimumRedemption, ref: s.referrerReward, inv: s.inviteeReward, refMin: s.referralMinimumPurchase, sms: s.smsCost });
++export const customer = (c) => ({ id: c.id, phone: c.phone, code: c.referralCode, mkt: c.marketingConsent === true, by: c.referredBy || null, created: iso(c.createdAt), points: c.pointsBalance || 0, spend: c.totalEligibleSpend || 0, txCount: c.txCount || 0 });
++export const tx = (t) => ({ id: t.id, c: t.customerId, phone: t.phone, total: t.totalAmount, elig: t.eligibleAmount, pts: t.pointsEarned, status: t.status, reason: e(t.reversalReason), at: iso(t.createdAt),
++  items: (t.items || []).map((i) => ({ name: e(i.itemName), type: i.itemType, price: i.totalPrice, rate: i.pointsRate, pts: i.pointsEarned })) });
++export const ledger = (l) => ({ id: l.id, c: l.customerId, type: l.type, pts: l.points, after: l.balanceAfter, desc: e(l.description), at: iso(l.createdAt) });
++export const sms = (m, campName) => ({ id: m.id, phone: m.phone, type: m.templateId, camp: m.campaignId ? (campName(m.campaignId) || 'Campaign') : null, msg: e(m.message), st: m.status, delivery: m.delivery || 'UNKNOWN', cost: m.estimatedCost, at: iso(m.createdAt) });
++export const referral = (r) => ({ id: r.id, from: r.referrerCustomerId, to: r.referredCustomerId, amt: r.qualifyingAmount || 0, st: r.status, txId: r.qualifyingTransactionId || null, draw: r.drawResult || null });
++export const voucher = (v) => ({ id: v.id, code: v.code, type: v.type, val: v.value, st: v.status, c: v.customerId || null, at: iso(v.createdAt) });
++export const campaign = (k) => ({ id: k.id, name: e(k.name), ad: e(k.advert), url: e(k.destinationUrl), on: k.active !== false, pr: k.priority || 1, start: k.startDate || '', end: k.endDate || '', promo: e(k.promotes) });
++export const audit = (a) => ({ a: e(`${a.action} ${a.ref || ''}`.trim()), at: iso(a.createdAt || a.at) });
++/** Merge newest data over what we already hold, keeping every row once. */
++export const mergeBy = (have, items, key = 'id') => { const m = new Map(have.map((x) => [x[key], x])); for (const i of items) m.set(i[key], i); return [...m.values()]; };
+diff --git a/js/services/api.js b/js/services/api.js
+new file mode 100644
+index 0000000..6ac74a3
+--- /dev/null
++++ b/js/services/api.js
+@@ -0,0 +1,12 @@
++// Thin client for the two Perks callables. Same contract the backend documents (PAY docs/perks/BACKEND.md).
++import { runtime } from './runtime.js';
++
++export class ApiError extends Error {
++  constructor(code, message) { super(message); this.code = code; }
++}
++export const op = (action, payload = {}) => runtime.transport.op(action, payload);
++export const me = (action, payload = {}) => runtime.transport.me(action, payload);
++/** Idempotency key: the server records a sale/redemption once per key, so a double tap or retry is safe. */
++export const newKey = () => globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
++export const errText = (e) => (e && e.message ? e.message : 'Something went wrong. Please try again.');
++export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+diff --git a/js/services/demo.js b/js/services/demo.js
+new file mode 100644
+index 0000000..eb2e0ef
+--- /dev/null
++++ b/js/services/demo.js
+@@ -0,0 +1,110 @@
++// Demo service: the same contract as live.js, executed on the local simulated state (persisted in localStorage).
++// Keep behaviour and error messages aligned with the backend so the demo is a faithful rehearsal of live.
++import { S, view } from '../core/state.js';
++import { nmc, norm, now, save } from '../core/utils.js';
++import { L, bal } from '../modules/points.js';
++import { sendSms } from '../modules/sms.js';
++import { post } from '../modules/transactions.js';
++import { award } from '../modules/vouchers.js';
++import { ApiError, sleep } from './api.js';
++
++const fail = (code, msg) => { throw new ApiError(code, msg); };
++const CFG_KEYS = { servicesPointsRate: 'sv', productsPointsRate: 'pr', referrerReward: 'ref', inviteeReward: 'inv', smsCost: 'sms', minimumRedemption: 'min', referralMinimumPurchase: 'refMin' };
++
++export const demo = {
++  async refresh() {},
++  async recordSale({ phone, items, ne, ref }) {
++    await sleep(450);
++    const c = S.cs.find((x) => x.phone === phone), rc = ref && S.cs.find((x) => x.code === ref);
++    if (ref && !rc) fail('not-found', 'Referral code not found.');
++    if (rc && c && rc.id === c.id) fail('failed-precondition', 'Self-referral is not allowed.');
++    if (rc && c) fail('failed-precondition', "A referral can only be attached on a customer's first visit.");
++    const r = post(S, phone, items, ne);
++    if (rc && r.isNew && !r.c.by) {
++      r.c.by = rc.id;
++      const x = { id: 'r' + (S.refs.length + 1), from: rc.id, to: r.c.id, amt: 0, st: 'PENDING' };
++      if (r.t.elig > S.cfg.refMin) {
++        Object.assign(x, { st: 'REWARDED', amt: r.t.elig, txId: r.t.id });
++        L(S, rc.id, 'REFERRAL', S.cfg.ref, 'Referral reward'); L(S, r.c.id, 'REFERRAL', S.cfg.inv, 'Welcome referral reward');
++        sendSms(S, rc, 'ref', { pts: S.cfg.ref, bal: bal(S, rc.id) }); sendSms(S, r.c, 'ref', { pts: S.cfg.inv, bal: bal(S, r.c.id) });
++        r.t.refRewarded = true;
++      }
++      S.refs.push(x);
++    }
++    save();
++    return { t: r.t, c: r.c, bal: bal(S, r.c.id), isNew: r.isNew };
++  },
++  async redeem({ customer, points }) {
++    await sleep(250);
++    const b = bal(S, customer.id);
++    if (points < S.cfg.min) fail('failed-precondition', `Minimum redemption is ${S.cfg.min} points.`);
++    if (points > b) fail('failed-precondition', 'Customer does not have enough points.');
++    const value = (points * 20) / 100;
++    L(S, customer.id, 'REDEEM', -points, 'Redeemed in shop');
++    sendSms(S, customer, 'redeem', { pts: points, val: value, bal: bal(S, customer.id) });
++    save();
++    return { valueKes: value, bal: bal(S, customer.id) };
++  },
++  async reverseSale({ id, reason }) {
++    await sleep(200);
++    const t = S.tx.find((x) => x.id === id);
++    if (!t) fail('not-found', 'Transaction not found.');
++    if (t.status !== 'COMPLETED') fail('failed-precondition', 'Only completed sales can be reversed.');
++    if (bal(S, t.c) < t.pts) fail('failed-precondition', 'The customer has already spent these points; reverse the redemption first.');
++    t.status = 'REVERSED'; t.reason = reason;
++    L(S, t.c, 'REVERSAL', -t.pts, `Reversal of ${id}: ${reason}`);
++    S.audit.push({ at: now(), a: `REVERSE ${id} ${reason}` }); save();
++  },
++  async registerReferral({ phone, code }) {
++    await sleep(200);
++    const f = S.cs.find((c) => c.code === code);
++    if (!f) fail('not-found', 'Referral code not found.');
++    if (f.phone === phone) fail('failed-precondition', 'Self-referral is not allowed.');
++    let c = S.cs.find((x) => x.phone === phone);
++    if (c && S.refs.some((r) => r.to === c.id)) fail('already-exists', 'This customer already has a referrer.');
++    if (!c) { c = { id: 'c' + (S.cs.length + 1), phone, code: Math.random().toString(36).slice(2, 8).toUpperCase(), mkt: false, by: f.id, created: now() }; S.cs.push(c); }
++    c.by = f.id; S.refs.push({ id: 'r' + (S.refs.length + 1), from: f.id, to: c.id, amt: 0, st: 'PENDING' }); save();
++  },
++  async createVoucher({ type, value }) { await sleep(150); S.vo.push({ id: 'v' + S.vo.length, code: type.slice(0, 4) + value + Math.random().toString(36).slice(2, 5).toUpperCase(), type, val: value, st: 'AVAILABLE', c: null, at: now() }); save(); },
++  async bulkVouchers({ type, value, count }) { for (let i = 0; i < count; i++) await demo.createVoucher({ type, value }); },
++  async assignVoucher({ id, phone }) {
++    await sleep(200);
++    const v = S.vo.find((x) => x.id === id), c = S.cs.find((x) => x.phone === phone);
++    if (!c) fail('not-found', 'Customer not found.');
++    if (!v || v.st !== 'AVAILABLE') fail('failed-precondition', 'Voucher is not available.');
++    award(v, c.id); save();
++  },
++  async setVoucherStatus({ id, status }) {
++    const v = S.vo.find((x) => x.id === id);
++    if (status === 'REDEEMED' && v.st !== 'AWARDED') fail('failed-precondition', 'Only an awarded voucher can be redeemed.');
++    if (status === 'VOID' && v.st !== 'AVAILABLE' && v.st !== 'AWARDED') fail('failed-precondition', 'This voucher can no longer be voided.');
++    v.st = status; S.audit.push({ at: now(), a: `${status} ${id}` }); save();
++  },
++  async saveCampaign(k) {
++    let c = S.camps.find((x) => x.id === k.id);
++    if (!c) { c = { id: 'k' + Date.now(), on: true }; S.camps.push(c); }
++    Object.assign(c, { name: k.name, ad: k.ad, url: k.url, promo: k.promo, start: k.start, end: k.end, pr: k.pr || 1 }); save();
++  },
++  async toggleCampaign(id) { const k = S.camps.find((x) => x.id === id); k.on = !k.on; if (!k.on && S.act === id) S.act = ''; save(); },
++  async setActiveCampaign(id) { S.act = id; save(); },
++  async saveTemplate({ id, body }) { S.tpl[id] = body; (S.tplAt = S.tplAt || {})[id] = now(); save(); },
++  async updateSettings(patch) { for (const [k, v] of Object.entries(patch)) if (CFG_KEYS[k]) S.cfg[CFG_KEYS[k]] = Number(v) || 0; save(); },
++  async setDrawEnabled(v) { S.draw = v; save(); },
++  async runDraw() {
++    const rs = S.refs.filter((r) => r.st === 'REWARDED' && !r.draw), vs = S.vo.filter((v) => v.st === 'AVAILABLE');
++    if (!rs.length || !vs.length) fail('failed-precondition', 'Needs a rewarded referral and an available voucher.');
++    const r = rs[Math.floor(Math.random() * rs.length)], v = vs[Math.floor(Math.random() * vs.length)];
++    award(v, r.from); r.draw = `${v.code} (${v.type} ${v.val})`; S.audit.push({ at: now(), a: 'DRAW ' + r.id }); save();
++    return { message: `Winner ${nmc(r.from)}: ${v.code}` };
++  },
++  async retrySms(id) { const m = S.sms.find((x) => x.id === id); m.st = 'RETRIED'; await sleep(900); m.st = 'SENT'; save(); },
++  async setConsent({ customer, value }) { const x = S.cs.find((y) => y.id === customer.id); x.mkt = value; S.audit.push({ at: now(), a: `CONSENT ${x.phone} ${x.mkt}` }); save(); },
++  async addCustomer(phone) {
++    if (S.cs.some((c) => c.phone === phone)) return S.cs.find((c) => c.phone === phone).id;
++    const c = { id: 'c' + (S.cs.length + 1), phone, code: Math.random().toString(36).slice(2, 8).toUpperCase(), mkt: false, by: null, created: now() };
++    S.cs.push(c); sendSms(S, c, 'welcome', { code: c.code }); save(); return c.id;
++  },
++  async openCustomer() {},
++  async setMarketing(value) { const x = S.cs.find((y) => y.id === S.user.id); x.mkt = value; S.audit.push({ at: now(), a: `CONSENT ${x.phone} ${value}` }); save(); return x; },
++};
++void norm; void view;
+diff --git a/js/services/firebase.js b/js/services/firebase.js
+new file mode 100644
+index 0000000..e9f4ddb
+--- /dev/null
++++ b/js/services/firebase.js
+@@ -0,0 +1,42 @@
++// Real Firebase runtime (no build step: modular SDK straight from the CDN, pinned). Provides the transport and auth objects
++// the rest of the app uses, so nothing else imports Firebase.
++import { firebaseConfig } from '../firebase/config.js';
++import { ApiError } from './api.js';
++
++const V = '10.14.1', CDN = `https://www.gstatic.com/firebasejs/${V}/`;
++const REGION = 'africa-south1';
++
++const CODES = {
++  'auth/invalid-credential': 'Wrong email or password.', 'auth/wrong-password': 'Wrong email or password.', 'auth/user-not-found': 'Wrong email or password.',
++  'auth/invalid-email': 'Enter a valid email address.', 'auth/too-many-requests': 'Too many attempts. Please wait a few minutes.', 'auth/network-request-failed': 'Network problem. Check your connection.',
++  'auth/invalid-custom-token': 'Sign-in failed. Please request a new code.',
++};
++function toApiError(e) {
++  const code = String(e?.code || '').replace('functions/', '');
++  if (CODES[code]) return new ApiError(code, CODES[code]);
++  if (code === 'unauthenticated') return new ApiError(code, 'Please sign in again.');
++  if (code === 'internal' || code === 'unavailable' || code === 'deadline-exceeded' || !code) return new ApiError(code || 'unavailable', 'Network problem. Please try again.');
++  return new ApiError(code, e.message || 'Something went wrong.');
++}
++
++export async function createFirebaseRuntime() {
++  const [{ initializeApp }, A, F] = await Promise.all([import(CDN + 'firebase-app.js'), import(CDN + 'firebase-auth.js'), import(CDN + 'firebase-functions.js')]);
++  const app = initializeApp(firebaseConfig), auth = A.getAuth(app), fns = F.getFunctions(app, REGION);
++  const call = (name) => { const fn = F.httpsCallable(fns, name); return async (data) => { try { return (await fn(data)).data; } catch (e) { throw toApiError(e); } }; };
++  const callOp = call('perks_op'), callMe = call('perks_me'), sendOtp = call('sendLoginOtp'), verifyOtp = call('verifyLoginOtp');
++  return {
++    live: true,
++    transport: { op: (action, payload) => callOp({ action, payload }), me: (action, payload) => callMe({ action, payload }) },
++    auth: {
++      async signInOperator(email, password) { try { await A.signInWithEmailAndPassword(auth, email, password); } catch (e) { throw toApiError(e); } },
++      sendOtp: (phone) => sendOtp({ phone, product: 'perks' }),
++      async verifyOtp(phone, code) { const { token } = await verifyOtp({ phone, code, product: 'perks' }); try { await A.signInWithCustomToken(auth, token); } catch (e) { throw toApiError(e); } },
++      signOut: () => A.signOut(auth),
++      onChange: (cb) => A.onAuthStateChanged(auth, async (u) => {
++        if (!u) return cb(null);
++        const t = await u.getIdTokenResult();
++        cb({ uid: u.uid, email: u.email || null, phone: t.claims.otp_phone || null });
++      }),
++    },
++  };
++}
+diff --git a/js/services/index.js b/js/services/index.js
+new file mode 100644
+index 0000000..d7e4f9d
+--- /dev/null
++++ b/js/services/index.js
+@@ -0,0 +1,6 @@
++// The only thing screens import for data actions. Picks live or demo per call, so one build serves both.
++import { demo } from './demo.js';
++import { live } from './live.js';
++import { isLive } from './runtime.js';
++
++export const svc = new Proxy({}, { get: (_, k) => (...a) => (isLive() ? live : demo)[k](...a) });
+diff --git a/js/services/live.js b/js/services/live.js
+new file mode 100644
+index 0000000..854243d
+--- /dev/null
++++ b/js/services/live.js
+@@ -0,0 +1,85 @@
++// Live service: every action is a call to perks_op / perks_me; screens are fed by re-reading the affected lists.
++import { S, setS, view } from '../core/state.js';
++import { itemType } from '../modules/points.js';
++import { me, op } from './api.js';
++import * as A from './adapt.js';
++import { LIVE_TEMPLATE_DEFAULTS } from './templates.js';
++
++export const emptyState = () => ({ cfg: { sv: 7, pr: 4, min: 100, ref: 50, inv: 30, refMin: 50, sms: 0.2 }, cs: [], tx: [], led: [], sms: [], refs: [], vo: [], camps: [], act: '', tpl: { ...LIVE_TEMPLATE_DEFAULTS }, tplAt: {}, audit: [], draw: false, user: null, n: 1 });
++
++const WINDOW_MS = 90 * 24 * 3600 * 1000; // history loaded for lists and reports
++const ALL = ['settings', 'customers', 'tx', 'ledger', 'referrals', 'vouchers', 'campaigns', 'templates', 'smsLog', 'audit'];
++const list = (collection, limit, since) => op('list', { collection, limit, ...(since ? { since } : {}) }).then((r) => r.items);
++
++export async function refresh(keys = ALL) {
++  const since = Date.now() - WINDOW_MS;
++  const jobs = {
++    settings: () => op('getSettings'), customers: () => list('customers', 1000), tx: () => list('tx', 1000, since), ledger: () => list('ledger', 1000, since),
++    referrals: () => list('referrals', 500), vouchers: () => list('vouchers', 500), campaigns: () => list('campaigns', 100), templates: () => list('templates', 50),
++    smsLog: () => list('smsLog', 500, since), audit: () => list('audit', 50),
++  };
++  const got = await Promise.all(keys.map((k) => jobs[k]()));
++  const d = Object.fromEntries(keys.map((k, i) => [k, got[i]]));
++  if (d.settings) { S.cfg = A.cfg(d.settings); S.act = d.settings.activeCampaignId || ''; S.draw = d.settings.referralDrawEnabled === true; }
++  if (d.customers) S.cs = d.customers.map(A.customer);
++  if (d.tx) S.tx = d.tx.map(A.tx);
++  if (d.ledger) S.led = d.ledger.map(A.ledger);
++  if (d.referrals) S.refs = d.referrals.map(A.referral);
++  if (d.vouchers) S.vo = d.vouchers.map(A.voucher);
++  if (d.campaigns) S.camps = d.campaigns.map(A.campaign);
++  if (d.templates) { S.tpl = { ...LIVE_TEMPLATE_DEFAULTS }; S.tplAt = {}; for (const t of d.templates) { S.tpl[t.id] = A.e(t.body); S.tplAt[t.id] = t.updatedAt; } }
++  const camp = (id) => (S.camps.find((k) => k.id === id) || {}).name;
++  if (d.smsLog) S.sms = d.smsLog.map((m) => A.sms(m, camp));
++  if (d.audit) S.audit = d.audit.map(A.audit);
++}
++
++/** Customer's own account (perks_me). Returns false when this phone has no Perks account yet. */
++export async function loadCustomerSession(user) {
++  const r = await me('summary');
++  const base = emptyState();
++  if (!r.registered) { setS({ ...base, user: { role: 'cust', id: null, phone: user.phone, unregistered: true } }); return false; }
++  const c = A.customer(r.customer);
++  setS({ ...base, cs: [c], tx: r.tx.map(A.tx), led: r.ledger.map(A.ledger), vo: r.vouchers.map(A.voucher),
++    refs: r.referrals.map((x, i) => ({ id: 'r' + i, from: c.id, to: null, st: x.status, amt: 0 })), user: { role: 'cust', id: c.id, phone: c.phone } });
++  return true;
++}
++
++const salePts = (t) => ({ id: t.id, total: t.totalAmount, elig: t.eligibleAmount, pts: t.pointsEarned });
++
++export const live = {
++  refresh,
++  async recordSale({ phone, items, ne, ref, key }) {
++    const r = await op('recordSale', { phone, items: items.map((i) => ({ itemName: i.name, itemType: itemType(i.name), price: i.price })), nonEligibleAmount: ne, referralCode: ref || undefined, idempotencyKey: key });
++    await refresh(['customers', 'tx', 'ledger', 'smsLog', 'referrals']);
++    const n = r.notifications || [];
++    return { t: { ...salePts(r.transaction), refRewarded: n.some((x) => x.type === 'referralReferrer') }, c: { id: r.customer.id, phone: r.customer.phone }, bal: r.customer.pointsBalance, isNew: n.some((x) => x.type === 'welcome'), duplicate: r.duplicate };
++  },
++  async redeem({ customer, points, key }) {
++    const r = await op('redeem', { phone: customer.phone, points, idempotencyKey: key });
++    await refresh(['customers', 'ledger', 'smsLog']);
++    return { valueKes: r.redemption.valueKes, bal: r.redemption.balanceAfter };
++  },
++  async reverseSale({ id, reason }) { await op('reverseSale', { transactionId: id, reason }); await refresh(['customers', 'tx', 'ledger', 'audit']); },
++  async registerReferral({ phone, code }) { await op('registerReferral', { inviteePhone: phone, code }); await refresh(['customers', 'referrals', 'audit']); },
++  async createVoucher({ type, value }) { await op('createVoucher', { type, value }); await refresh(['vouchers']); },
++  async bulkVouchers({ type, value, count }) { await op('bulkVouchers', { type, value, count }); await refresh(['vouchers']); },
++  async assignVoucher({ id, phone }) { await op('assignVoucher', { voucherId: id, phone }); await refresh(['vouchers', 'customers', 'ledger', 'smsLog']); },
++  async setVoucherStatus({ id, status }) { await op('setVoucherStatus', { voucherId: id, status }); await refresh(['vouchers']); },
++  async saveCampaign(k) { await op('saveCampaign', { id: k.id || undefined, name: k.name, advert: k.ad, destinationUrl: k.url, priority: k.pr, startDate: k.start, endDate: k.end, promotes: k.promo }); await refresh(['campaigns']); },
++  async toggleCampaign(id) { const k = S.camps.find((x) => x.id === id); await op('setCampaignActive', { id, active: !k.on }); await refresh(['campaigns', 'settings']); },
++  async setActiveCampaign(id) { await op('setActiveCampaign', { id }); await refresh(['settings']); },
++  async saveTemplate({ id, body }) { await op('saveTemplate', { id, body }); await refresh(['templates']); },
++  async updateSettings(patch) { await op('updateSettings', { patch }); await refresh(['settings', 'audit']); },
++  async setDrawEnabled(v) { await op('updateSettings', { patch: { referralDrawEnabled: v } }); await refresh(['settings', 'audit']); },
++  async runDraw() { await op('runDraw'); return { message: 'Draw complete' }; },
++  async retrySms(id) { const r = await op('retrySms', { id }); await refresh(['smsLog']); return r; },
++  async setConsent({ customer, value }) { await op('setConsent', { phone: customer.phone, marketing: value }); await refresh(['customers', 'audit']); },
++  async addCustomer(phone) { const r = await op('createCustomer', { phone }); await refresh(['customers', 'smsLog']); return r.customer.id; },
++  async openCustomer(id) {
++    const c = S.cs.find((x) => x.id === id); if (!c) return;
++    const r = await op('getCustomer', { phone: c.phone }); if (!r.found) return;
++    S.tx = A.mergeBy(S.tx, r.tx.map(A.tx)); S.led = A.mergeBy(S.led, r.ledger.map(A.ledger)); S.vo = A.mergeBy(S.vo, r.vouchers.map(A.voucher));
++    const camp = (cid) => (S.camps.find((k) => k.id === cid) || {}).name; S.sms = A.mergeBy(S.sms, r.smsLog.map((m) => A.sms(m, camp)));
++  },
++  async setMarketing(value) { await me('setMarketing', { value }); const r = await me('summary'); const c = A.customer(r.customer); S.cs = [c]; view.dirty = false; return c; },
++};
+diff --git a/js/services/runtime.js b/js/services/runtime.js
+new file mode 100644
+index 0000000..3f15d87
+--- /dev/null
++++ b/js/services/runtime.js
+@@ -0,0 +1,5 @@
++// Runtime switch: live (Firebase callables + real auth) or demo (local simulation). Set once by app/bootstrap.js.
++
++export const runtime = { live: false, transport: null, auth: null };
++export const configureRuntime = (r) => Object.assign(runtime, r);
++export const isLive = () => runtime.live === true;
+diff --git a/js/services/templates.js b/js/services/templates.js
+new file mode 100644
+index 0000000..20de19e
+--- /dev/null
++++ b/js/services/templates.js
+@@ -0,0 +1,20 @@
++// SMS template metadata shared by the editor, previews and both services. Keep in sync with PAY perks/rules.ts.
++
++export const LIVE_TEMPLATE_DEFAULTS = {
++  sale: 'Rexnet Cyber: KES {{amount}} received. You earned {{pointsEarned}} pts. Balance {{pointsBalance}} pts (KES {{balanceValue}}).',
++  redeem: 'Rexnet Cyber: you redeemed {{pointsRedeemed}} pts for KES {{discount}} off. Balance {{pointsBalance}} pts.',
++  referralReferrer: 'Samuhia Perks: your referral qualified! You earned {{referrerReward}} pts. Balance {{pointsBalance}} pts.',
++  referralInvitee: 'Samuhia Perks: welcome bonus! You earned {{inviteeReward}} pts. Balance {{pointsBalance}} pts.',
++  voucher: 'Samuhia Perks: you won voucher {{voucherCode}} worth {{voucherValue}}. Show it at Samuhia Cyber.',
++  welcome: 'Welcome to Samuhia Perks! Your referral code is {{referralCode}}. Earn points on every visit.',
++};
++export const LIVE_PLACEHOLDERS = ['phone', 'amount', 'service', 'pointsEarned', 'pointsBalance', 'balanceValue', 'pointsRedeemed', 'discount', 'referralCode', 'referrerReward', 'inviteeReward', 'voucherCode', 'voucherValue'];
++export const DEMO_PLACEHOLDERS = ['amount', 'pts', 'bal', 'val', 'code'];
++export const SAMPLE_VARS = {
++  phone: '+254712345678', amount: 600, pointsEarned: 36, pointsBalance: 255, balanceValue: 51, pointsRedeemed: 100, discount: 20, service: 'Printing',
++  referralCode: 'AMANI7', referrerReward: 50, inviteeReward: 30, voucherCode: 'DISC50', voucherValue: 'KES 50 off',
++  pts: 36, bal: 255, val: 51, code: 'DISC50',
++};
++/** Accepts {{name}} (live) and {name} (demo). Unknown placeholders are left visible so mistakes show in the preview. */
++export const fillTemplate = (body, vars = SAMPLE_VARS) => String(body).replace(/\{\{?\s*(\w+)\s*\}?\}/g, (m, k) => (k in vars ? String(vars[k]) : m));
++export const OPT_OUT = 'Opt out: perks.samuhia.co.ke';
+diff --git a/package.json b/package.json
+index 0a55eaf..e268084 100644
+--- a/package.json
++++ b/package.json
+@@ -4,7 +4,8 @@
+   "type": "module",
+   "scripts": {
+     "start": "npx serve .",
+-    "test": "node tests/smoke.mjs"
++    "test": "node tests/smoke.mjs",
++    "test:e2e": "node tests/live.e2e.mjs"
+   },
+   "devDependencies": {
+     "jsdom": "^24.0.0"
+diff --git a/tests/live.e2e.mjs b/tests/live.e2e.mjs
+new file mode 100644
+index 0000000..908e1b6
+--- /dev/null
++++ b/tests/live.e2e.mjs
+@@ -0,0 +1,154 @@
++/* Live-mode end-to-end: the real Perks frontend (jsdom) -> service layer -> the REAL PAY backend handlers on a fake Firestore.
++ * Run:  PAY_FUNCTIONS=../PAY/functions npm run test:e2e     (after `npm run build` in PAY/functions). Skips if PAY_FUNCTIONS is unset. */
++import path from 'node:path';
++import { createRequire } from 'node:module';
++import { JSDOM } from 'jsdom';
++
++if (!process.env.PAY_FUNCTIONS) { console.log('live e2e skipped: set PAY_FUNCTIONS=<path to PAY/functions>'); process.exit(0); }
++const PAY = path.resolve(process.env.PAY_FUNCTIONS), req = createRequire(import.meta.url);
++const { FakeDb } = req(path.join(PAY, 'test/fake-orderby.js'));
++const { handleOperator, handleCustomer } = req(path.join(PAY, 'lib/perks/handlers.js'));
++const { PerksError } = req(path.join(PAY, 'lib/perks/types.js'));
++
++const dom = new JSDOM('<!doctype html><html><body><header><div class="logo">Perks</div><div id="who"></div></header><main id="app"></main><nav id="nav"></nav><div id="toast"></div></body></html>', { url: 'https://perks.samuhia.co.ke/join?ref=amani7' });
++const W = dom.window;
++Object.assign(globalThis, { document: W.document, localStorage: W.localStorage, location: W.location });
++
++const state = await import('../js/core/state.js');
++const { ApiError } = await import('../js/services/api.js');
++const { boot } = await import('../js/app/bootstrap.js');
++const { bal } = await import('../js/modules/points.js');
++
++// ---- fake "server": real handlers, JSON round-trip like the network, auth stub like Firebase ----
++const db = new FakeDb(), sent = []; let pid = 0, failNext = false, cur = null; const listeners = [];
++const send = async (phone, message) => { if (failNext) { failNext = false; return { success: false, error: 'gateway down' }; } sent.push({ phone, message }); return { success: true, providerId: 'P' + (++pid) }; };
++const wire = async (fn) => { try { return JSON.parse(JSON.stringify((await fn()) ?? null)); } catch (e) { if (e instanceof PerksError) throw new ApiError(e.code, e.message); throw e; } };
++const emit = () => listeners.forEach((cb) => cb(cur));
++const rt = {
++  live: true,
++  transport: {
++    op: (a, p) => wire(() => { if (!cur || cur.uid !== 'op1') throw new ApiError('permission-denied', 'Not a Perks operator.'); return handleOperator(db, send, 'op1', a, p); }),
++    me: (a, p) => wire(() => { if (!cur?.phone) throw new ApiError('permission-denied', 'Verify your phone number.'); return handleCustomer(db, { uid: cur.uid, phone: cur.phone }, a, p); }),
++  },
++  auth: {
++    async signInOperator(email, pw) { if (pw !== 'correct-horse') throw new ApiError('auth/invalid-credential', 'Wrong email or password.'); cur = { uid: email.startsWith('op') ? 'op1' : 'stranger', email, phone: null }; emit(); },
++    async sendOtp() { return { ok: true }; },
++    async verifyOtp(phone, code) { if (code !== '123456') throw new ApiError('invalid-argument', 'The code is incorrect.'); cur = { uid: 'u' + phone, email: null, phone }; emit(); },
++    async signOut() { cur = null; emit(); },
++    onChange(cb) { listeners.push(cb); cb(cur); },
++  },
++};
++
++// ---- helpers ----
++const $ = (s) => document.querySelector(s), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), settle = () => sleep(120);
++const text = () => document.body.textContent;
++const mk = (t) => new W.MouseEvent(t, { bubbles: true });
++const clickEl = (el) => el.dispatchEvent(mk('click'));
++const fire = (el, t) => el.dispatchEvent(new W.Event(t, { bubbles: true }));
++const type = (el, v) => { el.value = v; fire(el, 'input'); };
++const change = (el, v) => { el.value = v; fire(el, 'change'); };
++const find = (sel, t) => [...document.querySelectorAll(sel)].find((e) => e.textContent.includes(t));
++const press = async (t, sel = 'button,[data-on-click]') => { const e = find(sel, t); if (!e) throw new Error('no control: ' + t + '\n' + text().slice(0, 300)); clickEl(e); await settle(); };
++const nav = async (l) => { clickEl(find('#nav a', l)); await settle(); };
++const confirmDialog = async (input) => { if (input !== undefined) $('#mi').value = input; clickEl($('#my')); await sleep(400); };
++const toastText = () => $('#toast').textContent;
++const ok = (c, m) => { if (!c) throw new Error('FAIL: ' + m); };
++const noInline = () => ok(!/\son(click|input|change)=/.test(document.body.innerHTML), 'inline handler in DOM');
++const S = () => state.S;
++const sale = async (phone, price, extra = {}) => {
++  await nav('New Sale'); type($('#ph'), phone); type($('#its input'), String(price));
++  if (extra.ref) type($('[data-on-input="modules_transactions_7"]'), extra.ref);
++  await press('RECORD SALE'); await confirmDialog(); await sleep(250);
++};
++
++// ---- 1. boot live: login page, join card, no demo data, nothing persisted ----
++await boot(rt); await settle();
++ok(text().includes('invited to Samuhia Perks') && text().includes('AMANI7'), 'join card with the referral code');
++ok(S().cs.length === 0 && !text().includes('admin@samuhia.demo'), 'live starts empty with no demo credentials');
++for (const k of ['S', 'render', 'go', 'bal']) ok(!(k in globalThis), 'global leak ' + k);
++
++// ---- 2. staff sign-in: wrong password, stranger, operator ----
++type($('#em'), 'op@samuhia.co.ke'); type($('#pw'), 'nope'); await press('Staff sign in');
++ok(toastText().includes('Wrong email or password') && !S().user, 'bad password rejected');
++type($('#em'), 'stranger@x.co'); type($('#pw'), 'correct-horse'); await press('Staff sign in'); await settle();
++ok(!S().user && text().includes('not allowed to use the Perks operator'), 'non-operator is refused and signed out');
++type($('#em'), 'op@samuhia.co.ke'); type($('#pw'), 'correct-horse'); await press('Staff sign in'); await sleep(300);
++ok(S().user?.role === 'op', 'operator signed in');
++const n = document.querySelectorAll('#nav a').length; ok(n === 13, 'nav items ' + n);
++for (let i = 0; i < n; i++) { clickEl(document.querySelectorAll('#nav a')[i]); await settle(); ok($('#app').innerHTML.length > 40, 'empty screen ' + i); noInline(); }
++
++// ---- 3. sales, referral reward, SMS ----
++await sale('0711111111', 100);
++ok(text().includes('Sale recorded successfully'), 'sale 1 recorded');
++const inviter = S().cs.find((c) => c.phone === '+254711111111'); ok(inviter && bal(S(), inviter.id) === 7, 'inviter has 7 pts');
++ok(sent.some((m) => /Welcome to Samuhia Perks/.test(m.message)) && sent.some((m) => /KES 100 received/.test(m.message)), 'welcome + receipt SMS');
++await sale('0722222222', 200, { ref: inviter.code });
++ok(text().includes('Referral rewarded'), 'referral rewarded on first qualifying sale');
++const invitee = S().cs.find((c) => c.phone === '+254722222222');
++ok(bal(S(), inviter.id) === 57 && bal(S(), invitee.id) === 44, 'inviter 7+50, invitee 14+30');
++ok(S().refs.some((r) => r.st === 'REWARDED'), 'referral listed as REWARDED');
++await nav('Referrals'); ok(text().includes('REWARDED'), 'referrals screen shows it');
++
++// ---- 4. redemption through the UI, backend rules enforced ----
++await sale('0711111111', 2000);                         // +140 -> 197
++await nav('Redemptions'); type($('#app input'), '0711111111'); await settle();
++type($('#rd input'), '50'); await press('Confirm redemption'); ok(toastText().includes('Minimum'), 'below-minimum refused');
++type($('#rd input'), '100'); await press('Confirm redemption'); await confirmDialog();
++ok(bal(S(), inviter.id) === 97 && sent.some((m) => /redeemed 100 pts for KES 20/.test(m.message)), '100 pts = KES 20, balance 97, SMS sent');
++
++// ---- 5. reversal (spent points blocked, other sale reversed) ----
++await nav('Transactions');
++const big = S().tx.find((t) => t.total === 2000);
++clickEl(find('tr.cr', big.id)); await settle(); await press('Reverse sale'); await confirmDialog('typo'); await settle();
++ok(S().tx.find((t) => t.id === big.id).status === 'COMPLETED' && /spent/.test(toastText()), 'cannot reverse sale whose points were spent');
++const small = S().tx.find((t) => t.total === 200);
++await nav('Transactions'); clickEl(find('tr.cr', small.id)); await settle(); await press('Reverse sale'); await confirmDialog('wrong amount'); await settle();
++ok(S().tx.find((t) => t.id === small.id).status === 'REVERSED' && bal(S(), invitee.id) === 30, 'sale reversed with a ledger adjustment');
++
++// ---- 6. vouchers ----
++await nav('Vouchers'); type($('#vv'), '50'); await press('Create voucher');
++const v = S().vo.find((x) => x.val === 50); ok(v && v.st === 'AVAILABLE', 'voucher created');
++await press('Assign'); await confirmDialog('0722222222'); await settle();
++ok(S().vo.find((x) => x.id === v.id).st === 'AWARDED' && sent.some((m) => /won voucher/.test(m.message)), 'voucher awarded + SMS');
++
++// ---- 7. campaign + consent: advert only for opted-in customers, no STOP keyword ----
++await nav('Campaigns');
++type($('#cn'), 'Samuhia Desk'); $('#ca').value = 'Looking for extra income? Discover Samuhia Desk.'; type($('#cu'), 'https://perks.samuhia.co.ke');
++await press('Save campaign'); const camp = S().camps.find((k) => k.name === 'Samuhia Desk'); ok(camp, 'campaign saved');
++await press('Make active'); ok(S().act === camp.id, 'campaign active');
++sent.length = 0; await sale('0722222222', 100);
++ok(sent.length && sent.every((m) => !/Samuhia Desk|STOP/.test(m.message)), 'no advert without consent');
++await nav('Customers'); clickEl(find('tr.cr', '+254722222222')); await settle(); await press('Opted out'); await settle();
++ok(S().cs.find((c) => c.id === invitee.id).mkt === true, 'consent recorded');
++sent.length = 0; await sale('0722222222', 100);
++ok(/Discover Samuhia Desk/.test(sent[0].message) && /Opt out: perks\.samuhia\.co\.ke/.test(sent[0].message) && !/STOP|Reply/i.test(sent[0].message), 'advert + opt-out pointer with consent');
++
++// ---- 8. templates, settings, failed SMS retry ----
++await nav('Templates'); $('#tb').value = 'Hi {{secret}}'; await press('Save template');
++ok(/Unknown placeholder/.test(toastText()), 'bad template placeholder refused');
++await nav('Templates'); $('#tb').value = 'Got KES {{amount}}, balance {{pointsBalance}} pts.'; await press('Save template'); await settle();
++sent.length = 0; await sale('0722222222', 100); ok(sent.some((m) => /Got KES 100, balance/.test(m.message)), 'custom template used');
++await nav('Settings'); change($('[data-on-change="modules_settings_1"]'), '8'); await settle(); ok(S().cfg.sv === 8, 'rate updated on the server');
++failNext = true; await sale('0722222222', 100);
++await nav('SMS Centre'); const failedRow = S().sms.find((m) => m.st === 'FAILED'); ok(failedRow, 'failed SMS visible');
++await press('Retry', 'button'); await settle(); ok(S().sms.find((m) => m.id === failedRow.id).st === 'SENT', 'retry delivers');
++await nav('Reports'); await nav('Overview'); noInline();
++
++// ---- 9. customer side: OTP login, own data only, consent toggle, unregistered number ----
++await press('Log out'); await settle(); ok(!S().user, 'signed out');
++ok(S().cs.length === 0 && S().tx.length === 0, 'operator data wiped on logout');
++type($('#lp'), '0722222222'); await press('Send code'); type($('#lc'), '000000'); await press('Verify'); ok(/incorrect/.test(toastText()), 'wrong code refused');
++type($('#lc'), '123456'); await press('Verify'); await sleep(300);
++ok(S().user?.role === 'cust' && text().includes('Discover Samuhia') && text().includes('Lipa Mdogo Mdogo'), 'customer dashboard with Discover cards');
++ok(S().cs.length === 1 && S().cs[0].phone === '+254722222222' && S().tx.every((t) => t.phone === '+254722222222'), 'customer sees only their own data');
++ok(!find('button', 'Redeem'), 'no customer redeem control');
++await press('Marketing:'); await settle(); ok(S().cs[0].mkt === false, 'customer opted out');
++await press('Log out'); await settle();
++type($('#lp'), '0733333333'); await press('Send code'); type($('#lc'), '123456'); await press('Verify'); await sleep(300);
++ok(text().includes('No Perks account yet'), 'unregistered number gets a clear message');
++
++// ---- 10. privacy and hygiene ----
++ok(W.localStorage.length === 0, 'nothing from live mode is written to localStorage');
++noInline();
++console.log('live e2e OK');
++process.exit(0);
+diff --git a/tests/smoke.mjs b/tests/smoke.mjs
+index e4b7bea..5d5e6cf 100644
+--- a/tests/smoke.mjs
++++ b/tests/smoke.mjs
+@@ -6,7 +6,8 @@ globalThis.document = W.document;
+ globalThis.localStorage = W.localStorage;
+ 
+ const state = await import('../js/core/state.js');
+-await import('../js/app.js');
++const { boot } = await import('../js/app/bootstrap.js');
++await boot({ live: false });
+ const { bal } = await import('../js/modules/points.js');
+ 
+ const $ = (s) => document.querySelector(s);
+@@ -43,6 +44,7 @@ type($('#app input'), '0712345678');
+ type($('#rd input'), '100');
+ press('Confirm redemption');
+ clickEl($('#my'));
++await sleep(600);
+ ok(bal(state.S, 'c1') === before + 7 - 100, 'redemption balance wrong');
+ noInline();
+ 

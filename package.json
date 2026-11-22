@@ -4,9 +4,13 @@
   "type": "module",
   "scripts": {
     "start": "npx serve .",
-    "test": "node tests/smoke.mjs"
+    "test": "node tests/smoke.mjs",
+    "test:e2e": "node tests/live.e2e.mjs"
   },
   "devDependencies": {
     "jsdom": "^24.0.0"
+  },
+  "dependencies": {
+    "firebase": "^13.4.0"
   }
 }
